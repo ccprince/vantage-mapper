@@ -53,7 +53,7 @@ function startEdit(dir: Direction) {
   editIdTouched.value = false
   const exit = props.location.exits[dir]
   if (exit === null) {
-    editKind.value = 'unknown'
+    editKind.value = 'location'
     editIdValue.value = ''
   } else if (exit.kind === 'location') {
     editKind.value = 'location'
@@ -97,6 +97,13 @@ function exitStyleClass(exit: Exit): string {
   if (exit.kind === 'location') return $style.exitLocation
   if (exit.kind === 'departure') return $style.exitDeparture
   return $style.exitBlocked
+}
+
+function exitDestination(exit: Exit): LocationId | null {
+  if (!exit) return null
+  if (exit.kind === 'location') return exit.id
+  if (exit.kind === 'departure' && exit.id) return exit.id
+  return null
 }
 
 // --- Notes ---
@@ -153,6 +160,11 @@ const subMaps = computed(() => {
               <span :class="[$style.exitStatus, exitStyleClass(location.exits[dir])]">
                 {{ exitDescription(location.exits[dir]) }}
               </span>
+              <button
+                v-if="exitDestination(location.exits[dir])"
+                :class="$style.goBtn"
+                @click="emit('centerMap', exitDestination(location.exits[dir])!)"
+              >Go</button>
               <button :class="$style.editBtn" @click="startEdit(dir)">Edit</button>
             </div>
 
@@ -164,7 +176,7 @@ const subMaps = computed(() => {
               </div>
 
               <div :class="$style.kindOptions">
-                <label v-for="k in (['unknown', 'location', 'departure', 'blocked'] as EditKind[])" :key="k" :class="$style.kindOption">
+                <label v-for="k in (['location', 'departure', 'blocked'] as EditKind[])" :key="k" :class="$style.kindOption">
                   <input
                     type="radio"
                     :value="k"
@@ -172,24 +184,25 @@ const subMaps = computed(() => {
                     @change="onKindChange"
                   />
                   <span :class="[$style.kindLabel, editKind === k && $style.kindLabelActive]">
-                    {{ k === 'unknown' ? 'Unknown' : k === 'location' ? 'Location' : k === 'departure' ? 'Departure' : 'Blocked' }}
+                    {{ k === 'location' ? 'Location' : k === 'departure' ? 'Departure' : 'Blocked' }}
                   </span>
                 </label>
               </div>
 
-              <div v-if="editKind === 'location' || editKind === 'departure'" :class="$style.idInputRow">
+              <div :class="$style.idInputRow">
                 <input
                   :class="[$style.idInput, editIdError && $style.idInputError]"
                   v-model="editIdValue"
                   type="text"
                   maxlength="3"
                   :placeholder="editKind === 'departure' ? 'Optional' : '000'"
+                  :disabled="editKind === 'blocked'"
                   spellcheck="false"
                   autocomplete="off"
                   @blur="editIdTouched = true"
                 />
                 <span :class="$style.idInputLabel">
-                  {{ editKind === 'location' ? 'Destination ID' : 'Destination ID (if known)' }}
+                  {{ editKind === 'location' ? 'Destination ID' : editKind === 'departure' ? 'Destination ID (if known)' : '' }}
                 </span>
               </div>
               <p v-if="editIdError" :class="$style.fieldError">{{ editIdError }}</p>
@@ -365,21 +378,21 @@ const subMaps = computed(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 5px 0;
+  padding: 7px 0;
 }
 
 .dirLabel {
   font-family: var(--font-id);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--color-text-muted);
-  width: 16px;
+  width: 18px;
   flex-shrink: 0;
 }
 
 .exitStatus {
   flex: 1;
-  font-size: 13px;
+  font-size: 14px;
 }
 .exitUnknown {
   color: var(--color-text-dim);
@@ -388,15 +401,29 @@ const subMaps = computed(() => {
 .exitLocation {
   color: var(--color-text);
   font-family: var(--font-id);
-  font-size: 12px;
+  font-size: 14px;
 }
 .exitDeparture {
   color: var(--color-departure);
   font-family: var(--font-id);
-  font-size: 12px;
+  font-size: 14px;
 }
 .exitBlocked {
   color: var(--color-text-dim);
+}
+
+.goBtn {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  color: var(--color-cell-visited);
+  font-size: 13px;
+  padding: 4px 10px;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
+}
+.goBtn:hover {
+  border-color: var(--color-cell-visited);
 }
 
 .editBtn {
@@ -404,8 +431,8 @@ const subMaps = computed(() => {
   border: 1px solid var(--color-border);
   border-radius: 3px;
   color: var(--color-text-muted);
-  font-size: 11px;
-  padding: 2px 8px;
+  font-size: 13px;
+  padding: 4px 10px;
   flex-shrink: 0;
   transition: border-color 0.15s, color 0.15s;
 }
@@ -495,6 +522,10 @@ const subMaps = computed(() => {
 }
 .idInput:focus {
   border-color: var(--color-cell-visited);
+}
+.idInput:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 .idInputError {
   border-color: var(--color-error);
