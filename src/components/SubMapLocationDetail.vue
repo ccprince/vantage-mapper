@@ -7,6 +7,7 @@ const props = defineProps<{
   location: SubMapLocation
   subMapId: string
   actionTaken?: boolean
+  isCurrentLocation?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -137,7 +138,10 @@ function saveNotes() {
 <template>
   <div :class="$style.panel">
     <header :class="$style.header">
-      <span :class="$style.locationId">{{ location.id }}</span>
+      <div :class="$style.headerLeft">
+        <span :class="$style.locationId">{{ location.id }}</span>
+        <span v-if="isCurrentLocation" :class="$style.currentBadge">Here</span>
+      </div>
       <button :class="$style.closeBtn" @click="emit('close')" aria-label="Close panel">×</button>
     </header>
 
@@ -259,6 +263,24 @@ function saveNotes() {
   padding: 14px 16px;
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.currentBadge {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-cell-visited);
+  background: rgba(91, 143, 168, 0.15);
+  border: 1px solid rgba(91, 143, 168, 0.3);
+  border-radius: 3px;
+  padding: 2px 6px;
 }
 
 .locationId {

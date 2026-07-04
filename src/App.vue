@@ -262,6 +262,7 @@ function onReviewCenterMap(id: LocationId) {
             :location="selectedSubMapLocation"
             :sub-map-id="`${activeSubMap.parentLocationId}-${activeSubMap.type}`"
             :action-taken="!!atlasStore.subMaps[`${activeSubMap.parentLocationId}-${activeSubMap.type}`]?.actionTaken[selectedSubMapLocation.id]"
+            :is-current-location="atlasStore.subMaps[`${activeSubMap.parentLocationId}-${activeSubMap.type}`]?.currentLocationId === selectedSubMapLocation.id"
             @close="selectedSubMapLocation = null; uiStore.selectedLocationId = null"
             @go="onSubMapGo"
             @center-map="onSubMapCenterMap"
