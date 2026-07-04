@@ -5,6 +5,7 @@ import { useAtlasStore } from './atlas'
 export const useUiStore = defineStore('ui', {
   state: () => ({
     selectedLocationId: null as LocationId | null,
+    zoomLevel: 'full' as 'full' | 'near',
   }),
 
   getters: {

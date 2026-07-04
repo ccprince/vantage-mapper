@@ -27,17 +27,32 @@ const CELL = 32        // cell square size
 const HALF_G = (TILE - CELL) / 2   // 8px half-gutter
 const GRID = 27
 const SVG_SIZE = GRID * TILE   // 1296
+// Center cell SVG midpoint (grid origin = offset 0 maps to column/row 13)
+const CENTER_SVG = 13 * TILE + TILE / 2   // 648
+const NEAR_RADIUS = 5   // cells in each direction for 'near' zoom
+const NEAR_SIZE = (NEAR_RADIUS * 2 + 1) * TILE   // 528
+const NEAR_ORIGIN = CENTER_SVG - (NEAR_RADIUS + 0.5) * TILE   // 384
 
-// ── Background grid positions (27×27 = 729 cells) ─────────────
-const bgCells = (() => {
+const viewBox = computed(() => {
+  if (uiStore.zoomLevel === 'near') {
+    return `${NEAR_ORIGIN} ${NEAR_ORIGIN} ${NEAR_SIZE} ${NEAR_SIZE}`
+  }
+  return `0 0 ${SVG_SIZE} ${SVG_SIZE}`
+})
+
+// ── Background grid positions ──────────────────────────────────
+// In 'near' mode only render the (2R+1)² inner cells; full mode renders 27×27.
+const bgCells = computed(() => {
   const cells: Array<{ row: number; col: number }> = []
-  for (let row = 0; row < GRID; row++) {
-    for (let col = 0; col < GRID; col++) {
+  const lo = uiStore.zoomLevel === 'near' ? 13 - NEAR_RADIUS : 0
+  const hi = uiStore.zoomLevel === 'near' ? 13 + NEAR_RADIUS : GRID - 1
+  for (let row = lo; row <= hi; row++) {
+    for (let col = lo; col <= hi; col++) {
       cells.push({ row, col })
     }
   }
   return cells
-})()
+})
 
 // ── Data sources ───────────────────────────────────────────────
 const locationMap = computed<Record<LocationId, AnyLocation>>(() =>
@@ -221,7 +236,7 @@ onBeforeUnmount(clearLongPress)
 <template>
   <div :class="$style.mapGrid">
     <svg
-      :viewBox="`0 0 ${SVG_SIZE} ${SVG_SIZE}`"
+      :viewBox="viewBox"
       :class="$style.svg"
       preserveAspectRatio="xMidYMid meet"
     >

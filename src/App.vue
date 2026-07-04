@@ -100,6 +100,10 @@ function onOpenSubMap(type: SubMapType) {
           {{ selectedLocation ? 'Close panel' : 'Demo panel' }}
         </button>
         <button :class="$style.headerBtn" @click="showJumpTo = true">Jump to…</button>
+        <button
+          :class="[$style.headerBtn, $style.zoomBtn]"
+          @click="uiStore.zoomLevel = uiStore.zoomLevel === 'full' ? 'near' : 'full'"
+        >{{ uiStore.zoomLevel === 'full' ? 'Full' : 'Near' }}</button>
         <button :class="[$style.headerBtn, $style.headerBtnEnd]" @click="view = 'home'">
           End Session
         </button>
@@ -144,6 +148,10 @@ function onOpenSubMap(type: SubMapType) {
           {{ selectedLocation ? 'Close panel' : 'Demo panel' }}
         </button>
         <button :class="$style.headerBtn" @click="showJumpTo = true">Jump to…</button>
+        <button
+          :class="[$style.headerBtn, $style.zoomBtn]"
+          @click="uiStore.zoomLevel = uiStore.zoomLevel === 'full' ? 'near' : 'full'"
+        >{{ uiStore.zoomLevel === 'full' ? 'Full' : 'Near' }}</button>
         <button :class="$style.headerBtn" @click="view = 'home'">← Home</button>
       </div>
     </header>
@@ -332,6 +340,11 @@ function onOpenSubMap(type: SubMapType) {
 .headerBtnEnd:hover {
   border-color: var(--color-error);
   color: var(--color-error);
+}
+
+.zoomBtn {
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
 }
 
 .appBody {
