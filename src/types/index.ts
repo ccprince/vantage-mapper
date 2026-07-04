@@ -30,6 +30,8 @@ export interface SubMap {
   type: SubMapType
   parentId: LocationId
   locations: Record<LocationId, SubMapLocation>
+  currentLocationId: LocationId
+  visitedLocations: LocationId[]
 }
 
 export interface GameSession {

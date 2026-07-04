@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import type { GameSession, Location, LocationId, SubMapType } from './types'
+import type { GameSession, Location, LocationId, SubMapLocation, SubMapType } from './types'
 import SessionManager from './components/SessionManager.vue'
 import LocationDetail from './components/LocationDetail.vue'
+import SubMapLocationDetail from './components/SubMapLocationDetail.vue'
 import MapGrid from './components/MapGrid.vue'
-import SubMapView from './components/SubMapView.vue'
+import StartSubMapModal from './components/StartSubMapModal.vue'
 import JumpToLocation from './components/JumpToLocation.vue'
 import { useAtlasStore } from './stores/atlas'
 import { useSessionStore } from './stores/session'
@@ -22,6 +23,9 @@ const showJumpTo = ref(false)
 
 const selectedLocation = ref<Location | null>(null)
 const activeSubMap = ref<{ type: SubMapType; parentLocationId: LocationId } | null>(null)
+const selectedSubMapLocation = ref<SubMapLocation | null>(null)
+const subMapDisplayCenter = ref<LocationId | undefined>(undefined)
+const pendingSubMap = ref<{ type: SubMapType; parentLocationId: LocationId } | null>(null)
 const reviewedSession = ref<GameSession | null>(null)
 const reviewedSessionCenter = ref<LocationId | null>(null)
 
@@ -111,7 +115,67 @@ function onJumpTo(id: LocationId) {
 
 function onOpenSubMap(type: SubMapType) {
   if (!selectedLocation.value) return
-  activeSubMap.value = { type, parentLocationId: selectedLocation.value.id }
+  const parentLocationId = selectedLocation.value.id
+  const subMapId = `${parentLocationId}-${type}`
+  if (atlasStore.subMaps[subMapId]) {
+    const ids = Object.keys(atlasStore.subMaps[subMapId].locations)
+    subMapDisplayCenter.value = ids[0]
+    selectedSubMapLocation.value = null
+    uiStore.selectedLocationId = null
+    activeSubMap.value = { type, parentLocationId }
+  } else {
+    pendingSubMap.value = { type, parentLocationId }
+  }
+}
+
+function onStartSubMap(startingLocationId: LocationId) {
+  if (!pendingSubMap.value) return
+  const { type, parentLocationId } = pendingSubMap.value
+  atlasStore.createSubMap(parentLocationId, type, startingLocationId)
+  pendingSubMap.value = null
+  subMapDisplayCenter.value = startingLocationId
+  selectedSubMapLocation.value = null
+  uiStore.selectedLocationId = null
+  activeSubMap.value = { type, parentLocationId }
+}
+
+function onSelectSubMapLocation(id: LocationId) {
+  if (!activeSubMap.value) return
+  const subMapId = `${activeSubMap.value.parentLocationId}-${activeSubMap.value.type}`
+  const subMap = atlasStore.subMaps[subMapId]
+  if (!subMap) return
+  selectedSubMapLocation.value = subMap.locations[id] ?? null
+  uiStore.selectedLocationId = id
+}
+
+function onSubMapGo(id: LocationId) {
+  if (!activeSubMap.value) return
+  const subMapId = `${activeSubMap.value.parentLocationId}-${activeSubMap.value.type}`
+  const subMap = atlasStore.subMaps[subMapId]
+  if (!subMap) return
+  const loc = subMap.locations[id]
+  if (!loc) return
+  atlasStore.goToSubMapLocation(subMapId, id)
+  selectedSubMapLocation.value = loc
+  subMapDisplayCenter.value = id
+  uiStore.selectedLocationId = id
+}
+
+function onSubMapCenterMap(id: LocationId) {
+  subMapDisplayCenter.value = id
+  uiStore.selectedLocationId = id
+}
+
+function closeSubMap() {
+  activeSubMap.value = null
+  selectedSubMapLocation.value = null
+  uiStore.selectedLocationId = null
+}
+
+const TYPE_LABEL: Record<SubMapType, string> = {
+  interior: 'Interior',
+  aerial: 'Aerial',
+  underground: 'Underground',
 }
 
 const pastSessions = computed(() =>
@@ -164,6 +228,47 @@ function onReviewCenterMap(id: LocationId) {
     />
   </main>
 
+  <!-- Sub-map inline view -->
+  <div v-else-if="activeSubMap" :class="$style.appLayout">
+    <header :class="$style.appHeader">
+      <div :class="$style.subMapBreadcrumb">
+        <button :class="$style.headerBtn" @click="closeSubMap">← Back</button>
+        <span :class="$style.subMapTypeLabel">{{ TYPE_LABEL[activeSubMap.type] }}</span>
+        <span :class="$style.subMapSeparator">/</span>
+        <span :class="$style.subMapParentId">{{ activeSubMap.parentLocationId }}</span>
+      </div>
+      <div :class="$style.headerActions">
+        <button
+          :class="[$style.headerBtn, $style.zoomBtn]"
+          @click="uiStore.zoomLevel = uiStore.zoomLevel === 'full' ? 'near' : 'full'"
+        >{{ uiStore.zoomLevel === 'full' ? 'Full' : 'Near' }}</button>
+      </div>
+    </header>
+
+    <div :class="$style.appBody">
+      <div :class="$style.mapArea">
+        <MapGrid
+          :display-center="subMapDisplayCenter"
+          :sub-map-locations="atlasStore.subMaps[`${activeSubMap.parentLocationId}-${activeSubMap.type}`]?.locations"
+          :session-visited="atlasStore.subMaps[`${activeSubMap.parentLocationId}-${activeSubMap.type}`]?.visitedLocations"
+          :session-current-location-id="atlasStore.subMaps[`${activeSubMap.parentLocationId}-${activeSubMap.type}`]?.currentLocationId"
+          @select-location="onSelectSubMapLocation"
+        />
+      </div>
+      <transition name="panel">
+        <aside v-if="selectedSubMapLocation" :class="$style.detailPanel">
+          <SubMapLocationDetail
+            :location="selectedSubMapLocation"
+            :sub-map-id="`${activeSubMap.parentLocationId}-${activeSubMap.type}`"
+            @close="selectedSubMapLocation = null; uiStore.selectedLocationId = null"
+            @go="onSubMapGo"
+            @center-map="onSubMapCenterMap"
+          />
+        </aside>
+      </transition>
+    </div>
+  </div>
+
   <!-- Session view -->
   <div v-else-if="view === 'session'" :class="$style.appLayout">
     <header :class="$style.appHeader">
@@ -203,11 +308,12 @@ function onReviewCenterMap(id: LocationId) {
     </div>
 
     <JumpToLocation v-if="showJumpTo" @close="showJumpTo = false" @navigate="onJumpTo" />
-    <SubMapView
-      v-if="activeSubMap"
-      :type="activeSubMap.type"
-      :parent-location-id="activeSubMap.parentLocationId"
-      @close="activeSubMap = null"
+    <StartSubMapModal
+      v-if="pendingSubMap"
+      :type="pendingSubMap.type"
+      :parent-location-id="pendingSubMap.parentLocationId"
+      @submit="onStartSubMap"
+      @cancel="pendingSubMap = null"
     />
   </div>
 
@@ -245,11 +351,12 @@ function onReviewCenterMap(id: LocationId) {
       </transition>
     </div>
 
-    <SubMapView
-      v-if="activeSubMap"
-      :type="activeSubMap.type"
-      :parent-location-id="activeSubMap.parentLocationId"
-      @close="activeSubMap = null"
+    <StartSubMapModal
+      v-if="pendingSubMap"
+      :type="pendingSubMap.type"
+      :parent-location-id="pendingSubMap.parentLocationId"
+      @submit="onStartSubMap"
+      @cancel="pendingSubMap = null"
     />
   </div>
 
@@ -290,11 +397,12 @@ function onReviewCenterMap(id: LocationId) {
       </transition>
     </div>
 
-    <SubMapView
-      v-if="activeSubMap"
-      :type="activeSubMap.type"
-      :parent-location-id="activeSubMap.parentLocationId"
-      @close="activeSubMap = null"
+    <StartSubMapModal
+      v-if="pendingSubMap"
+      :type="pendingSubMap.type"
+      :parent-location-id="pendingSubMap.parentLocationId"
+      @submit="onStartSubMap"
+      @cancel="pendingSubMap = null"
     />
   </div>
 
@@ -453,6 +561,33 @@ function onReviewCenterMap(id: LocationId) {
   font-weight: 600;
   color: var(--color-text);
   letter-spacing: 0.02em;
+}
+
+.subMapBreadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.subMapTypeLabel {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.subMapSeparator {
+  color: var(--color-text-dim);
+  font-size: 14px;
+}
+
+.subMapParentId {
+  font-family: var(--font-id);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--color-text);
 }
 
 .headerActions {

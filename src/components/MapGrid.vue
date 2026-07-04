@@ -12,6 +12,7 @@ const props = defineProps<{
   readOnly?: boolean
   subMapLocations?: Record<LocationId, SubMapLocation>
   sessionVisited?: LocationId[]
+  sessionCurrentLocationId?: LocationId
   sessionActionTaken?: Record<LocationId, boolean>
 }>()
 
@@ -86,7 +87,9 @@ const visitedSet = computed(() =>
 const actionTakenMap = computed(() =>
   props.sessionActionTaken ?? atlasStore.activeSession?.actionTaken ?? {}
 )
-const currentLocationId = computed(() => atlasStore.activeSession?.currentLocationId ?? null)
+const currentLocationId = computed(() =>
+  props.sessionCurrentLocationId ?? atlasStore.activeSession?.currentLocationId ?? null
+)
 
 // ── Coordinate helpers ─────────────────────────────────────────
 function cellLeft(dx: number) { return (dx + 13) * TILE + HALF_G }
