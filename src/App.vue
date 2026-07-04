@@ -189,6 +189,7 @@ function onReviewCenterMap(id: LocationId) {
           :class="[$style.headerBtn, $style.zoomBtn]"
           @click="uiStore.zoomLevel = uiStore.zoomLevel === 'full' ? 'near' : 'full'"
         >{{ uiStore.zoomLevel === 'full' ? 'Full' : 'Near' }}</button>
+        <button :class="$style.headerBtn" @click="view = 'home'">Main Menu</button>
         <button :class="[$style.headerBtn, $style.headerBtnEnd]" @click="endSession">
           End Session
         </button>
