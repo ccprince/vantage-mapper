@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import type { Location, LocationId, SubMapType } from './types'
+import type { GameSession, Location, LocationId, SubMapType } from './types'
 import SessionManager from './components/SessionManager.vue'
 import LocationDetail from './components/LocationDetail.vue'
 import MapGrid from './components/MapGrid.vue'
@@ -14,7 +14,7 @@ const atlasStore = useAtlasStore()
 const sessionStore = useSessionStore()
 const uiStore = useUiStore()
 
-type AppView = 'home' | 'session' | 'atlas' | 'prev-sessions'
+type AppView = 'home' | 'session' | 'atlas' | 'prev-sessions' | 'prev-session-map'
 
 const view = ref<AppView>('home')
 const showSessionManager = ref(false)
@@ -22,6 +22,8 @@ const showJumpTo = ref(false)
 
 const selectedLocation = ref<Location | null>(null)
 const activeSubMap = ref<{ type: SubMapType; parentLocationId: LocationId } | null>(null)
+const reviewedSession = ref<GameSession | null>(null)
+const reviewedSessionCenter = ref<LocationId | null>(null)
 
 // Placeholder location shown while the map/store is not yet wired up
 const demoLocation: Location = {
@@ -47,6 +49,18 @@ function onSessionSubmit(name: string, startingLocationId: LocationId) {
   showSessionManager.value = false
   view.value = 'session'
   selectedLocation.value = null
+}
+
+function endSession() {
+  atlasStore.activeSessionId = null
+  selectedLocation.value = null
+  view.value = 'home'
+}
+
+function continueSession() {
+  selectedLocation.value = null
+  uiStore.selectedLocationId = null
+  view.value = 'session'
 }
 
 function onSelectLocation(id: LocationId) {
@@ -115,6 +129,19 @@ function onOpenSubMap(type: SubMapType) {
 const pastSessions = computed(() =>
   atlasStore.sessions.filter(s => s.id !== atlasStore.activeSessionId)
 )
+
+function openPreviousSession(session: GameSession) {
+  reviewedSession.value = session
+  reviewedSessionCenter.value = session.displayCenter
+  selectedLocation.value = null
+  uiStore.selectedLocationId = null
+  view.value = 'prev-session-map'
+}
+
+function onReviewCenterMap(id: LocationId) {
+  reviewedSessionCenter.value = id
+  uiStore.selectedLocationId = id
+}
 </script>
 
 <template>
@@ -125,7 +152,13 @@ const pastSessions = computed(() =>
       <span :class="$style.homeWordmark">Companion</span>
     </div>
     <nav :class="$style.homeNav">
-      <button :class="[$style.navBtn, $style.navBtnPrimary]" @click="openNewSession">
+      <template v-if="atlasStore.activeSession">
+        <button :class="[$style.navBtn, $style.navBtnPrimary]" @click="continueSession">
+          Continue: {{ atlasStore.activeSession.name }}
+        </button>
+        <div :class="$style.navDivider" />
+      </template>
+      <button :class="[$style.navBtn, atlasStore.activeSession ? $style.navBtnSecondary : $style.navBtnPrimary]" @click="openNewSession">
         New Session
       </button>
       <button :class="[$style.navBtn, $style.navBtnSecondary]" @click="enterAtlasView">
@@ -156,7 +189,7 @@ const pastSessions = computed(() =>
           :class="[$style.headerBtn, $style.zoomBtn]"
           @click="uiStore.zoomLevel = uiStore.zoomLevel === 'full' ? 'near' : 'full'"
         >{{ uiStore.zoomLevel === 'full' ? 'Full' : 'Near' }}</button>
-        <button :class="[$style.headerBtn, $style.headerBtnEnd]" @click="view = 'home'">
+        <button :class="[$style.headerBtn, $style.headerBtnEnd]" @click="endSession">
           End Session
         </button>
       </div>
@@ -234,6 +267,51 @@ const pastSessions = computed(() =>
     />
   </div>
 
+  <!-- Previous session map view -->
+  <div v-else-if="view === 'prev-session-map' && reviewedSession" :class="$style.appLayout">
+    <header :class="$style.appHeader">
+      <span :class="$style.headerSessionName">{{ reviewedSession.name }}</span>
+      <div :class="$style.headerActions">
+        <button :class="$style.headerBtn" @click="view = 'prev-sessions'">← Sessions</button>
+        <button
+          :class="[$style.headerBtn, $style.zoomBtn]"
+          @click="uiStore.zoomLevel = uiStore.zoomLevel === 'full' ? 'near' : 'full'"
+        >{{ uiStore.zoomLevel === 'full' ? 'Full' : 'Near' }}</button>
+        <button :class="$style.headerBtn" @click="view = 'home'">Main Menu</button>
+      </div>
+    </header>
+
+    <div :class="$style.appBody">
+      <div :class="$style.mapArea">
+        <MapGrid
+          :display-center="reviewedSessionCenter ?? undefined"
+          :read-only="true"
+          :session-visited="reviewedSession.visitedLocations"
+          :session-action-taken="reviewedSession.actionTaken"
+          @select-location="onSelectLocation"
+        />
+      </div>
+      <transition name="panel">
+        <aside v-if="selectedLocation" :class="$style.detailPanel">
+          <LocationDetail
+            :location="selectedLocation"
+            :in-session="false"
+            @close="selectedLocation = null"
+            @center-map="onReviewCenterMap"
+            @open-sub-map="onOpenSubMap"
+          />
+        </aside>
+      </transition>
+    </div>
+
+    <SubMapView
+      v-if="activeSubMap"
+      :type="activeSubMap.type"
+      :parent-location-id="activeSubMap.parentLocationId"
+      @close="activeSubMap = null"
+    />
+  </div>
+
   <!-- Previous sessions view -->
   <div v-else-if="view === 'prev-sessions'" :class="$style.simpleLayout">
     <header :class="$style.simpleHeader">
@@ -247,13 +325,19 @@ const pastSessions = computed(() =>
           v-for="s in pastSessions"
           :key="s.id"
           :class="$style.sessionItem"
+          @click="openPreviousSession(s)"
         >
-          <span :class="$style.sessionItemName">{{ s.name }}</span>
-          <span :class="$style.sessionItemMeta">
-            Started at <span :class="$style.sessionItemId">{{ s.startingLocationId }}</span>
-            &middot;
-            {{ new Date(s.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }}
-          </span>
+          <div :class="$style.sessionItemMain">
+            <span :class="$style.sessionItemName">{{ s.name }}</span>
+            <span :class="$style.sessionItemMeta">
+              Started at <span :class="$style.sessionItemId">{{ s.startingLocationId }}</span>
+              &middot;
+              {{ new Date(s.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }}
+              &middot;
+              {{ s.visitedLocations.length }} location{{ s.visitedLocations.length === 1 ? '' : 's' }} visited
+            </span>
+          </div>
+          <span :class="$style.sessionItemArrow">›</span>
         </li>
       </ul>
     </div>
@@ -319,6 +403,12 @@ const pastSessions = computed(() =>
   flex-direction: column;
   gap: 12px;
   width: 260px;
+}
+
+.navDivider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 4px 0;
 }
 
 .navBtn {
@@ -489,13 +579,26 @@ const pastSessions = computed(() =>
 
 .sessionItem {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
   padding: 14px 16px;
   border-radius: 5px;
   background: var(--color-map-surface);
   border: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.sessionItem:hover {
+  border-color: var(--color-text-muted);
+  background: var(--color-cell-known);
+}
+
+.sessionItemMain {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
 .sessionItemName {
@@ -507,12 +610,18 @@ const pastSessions = computed(() =>
 .sessionItemMeta {
   font-size: 12px;
   color: var(--color-text-muted);
-  white-space: nowrap;
 }
 
 .sessionItemId {
   font-family: var(--font-id);
   font-size: 13px;
   color: var(--color-text);
+}
+
+.sessionItemArrow {
+  font-size: 20px;
+  color: var(--color-text-dim);
+  flex-shrink: 0;
+  line-height: 1;
 }
 </style>

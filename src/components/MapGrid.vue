@@ -11,6 +11,8 @@ const props = defineProps<{
   displayCenter?: LocationId
   readOnly?: boolean
   subMapLocations?: Record<LocationId, SubMapLocation>
+  sessionVisited?: LocationId[]
+  sessionActionTaken?: Record<LocationId, boolean>
 }>()
 
 const emit = defineEmits<{
@@ -76,8 +78,14 @@ const placedLocations = computed(() =>
 
 // ── Session data ───────────────────────────────────────────────
 const selectedId = computed(() => uiStore.selectedLocationId)
-const visitedSet = computed(() => new Set(atlasStore.activeSession?.visitedLocations ?? []))
-const actionTakenMap = computed(() => atlasStore.activeSession?.actionTaken ?? {})
+const visitedSet = computed(() =>
+  props.sessionVisited
+    ? new Set(props.sessionVisited)
+    : new Set(atlasStore.activeSession?.visitedLocations ?? [])
+)
+const actionTakenMap = computed(() =>
+  props.sessionActionTaken ?? atlasStore.activeSession?.actionTaken ?? {}
+)
 const currentLocationId = computed(() => atlasStore.activeSession?.currentLocationId ?? null)
 
 // ── Coordinate helpers ─────────────────────────────────────────
@@ -88,8 +96,8 @@ function cellCy(dy: number)   { return (dy + 13) * TILE + TILE / 2 }
 
 // ── Cell styling ───────────────────────────────────────────────
 function cellFill(id: LocationId): string {
-  if (id === selectedId.value)                          return 'var(--color-cell-selected)'
-  if (!props.readOnly && visitedSet.value.has(id))      return 'var(--color-cell-visited)'
+  if (id === selectedId.value)                                              return 'var(--color-cell-selected)'
+  if (visitedSet.value.has(id) && (!props.readOnly || props.sessionVisited)) return 'var(--color-cell-visited)'
   return 'var(--color-cell-known)'
 }
 
