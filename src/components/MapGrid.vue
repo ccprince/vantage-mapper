@@ -95,10 +95,38 @@ function cellCx(dx: number)   { return (dx + 13) * TILE + TILE / 2 }
 function cellCy(dy: number)   { return (dy + 13) * TILE + TILE / 2 }
 
 // ── Cell styling ───────────────────────────────────────────────
+function cellState(id: LocationId): 'selected' | 'visited' | 'known' {
+  if (id === selectedId.value) return 'selected'
+  if (visitedSet.value.has(id) && (!props.readOnly || props.sessionVisited)) return 'visited'
+  return 'known'
+}
+
 function cellFill(id: LocationId): string {
-  if (id === selectedId.value)                                              return 'var(--color-cell-selected)'
-  if (visitedSet.value.has(id) && (!props.readOnly || props.sessionVisited)) return 'var(--color-cell-visited)'
+  const s = cellState(id)
+  if (s === 'selected') return 'var(--color-cell-selected)'
+  if (s === 'visited')  return 'var(--color-cell-visited)'
   return 'var(--color-cell-known)'
+}
+
+function cellIdFill(id: LocationId): string {
+  const s = cellState(id)
+  if (s === 'selected') return 'var(--color-cell-selected-fg)'
+  if (s === 'visited')  return 'var(--color-cell-visited-fg)'
+  return 'var(--color-text)'
+}
+
+function cellFlagFill(id: LocationId): string {
+  const s = cellState(id)
+  if (s === 'selected') return 'var(--color-cell-selected-fg)'
+  if (s === 'visited')  return 'var(--color-cell-visited-fg)'
+  return 'var(--color-text-muted)'
+}
+
+function cellActionFill(id: LocationId): string {
+  const s = cellState(id)
+  if (s === 'selected') return 'var(--color-cell-selected-action)'
+  if (s === 'visited')  return 'var(--color-cell-visited-action)'
+  return 'var(--color-action-taken)'
 }
 
 function isMainMapLocation(loc: AnyLocation): loc is Location {
@@ -295,6 +323,7 @@ onBeforeUnmount(clearLongPress)
           :x="cellLeft(dx) + CELL / 2"
           :y="cellTop(dy) + CELL / 2"
           :class="$style.cellId"
+          :style="{ fill: cellIdFill(id) }"
           text-anchor="middle"
           dominant-baseline="middle"
         >{{ id }}</text>
@@ -304,6 +333,7 @@ onBeforeUnmount(clearLongPress)
           :x="cellLeft(dx) + 3"
           :y="cellTop(dy) + CELL - 2"
           :class="$style.cellFlag"
+          :style="{ fill: cellFlagFill(id) }"
           dominant-baseline="auto"
         >I</text>
         <!-- Action taken (lower-right) -->
@@ -312,6 +342,7 @@ onBeforeUnmount(clearLongPress)
           :x="cellLeft(dx) + CELL - 3"
           :y="cellTop(dy) + CELL - 2"
           :class="$style.cellActionTaken"
+          :style="{ fill: cellActionFill(id) }"
           dominant-baseline="auto"
           text-anchor="end"
         >✓</text>

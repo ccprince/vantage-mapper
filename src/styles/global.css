@@ -5,6 +5,10 @@
   --color-cell-known:       #3a4a5c;
   --color-cell-visited:     #5b8fa8;
   --color-cell-selected:    #a8c5d6;
+  --color-cell-visited-fg:      #ffffff;
+  --color-cell-visited-action:  #a8f0b8;
+  --color-cell-selected-fg:     #0e1c28;
+  --color-cell-selected-action: #1a5028;
   --color-departure:        #c97a3a;
   --color-text:             #d4dde8;
   --color-action-taken:     #7ec88a;
