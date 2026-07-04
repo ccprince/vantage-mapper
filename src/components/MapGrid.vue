@@ -174,26 +174,12 @@ const departureMarkers = computed<DepMarker[]>(() => {
 })
 
 // ── Blocked markers ────────────────────────────────────────────
-// × drawn at gutter midpoint, deduplicated by gutter identity.
+// × drawn near the source cell (same positioning as departure asterisk).
+// Not deduplicated: both sides of a gutter can independently be blocked.
 type BlkMarker = { x: number; y: number }
-
-function gutterKey(dx: number, dy: number, dir: Direction): string {
-  if (dir === 'north') return `h:${dx}:${dy - 1}`
-  if (dir === 'south') return `h:${dx}:${dy}`
-  if (dir === 'east')  return `v:${dy}:${dx}`
-  /* west */           return `v:${dy}:${dx - 1}`
-}
-
-function gutterMid(dx: number, dy: number, dir: Direction): BlkMarker {
-  if (dir === 'north') return { x: cellCx(dx), y: cellCy(dy) - TILE / 2 }
-  if (dir === 'south') return { x: cellCx(dx), y: cellCy(dy) + TILE / 2 }
-  if (dir === 'east')  return { x: cellCx(dx) + TILE / 2, y: cellCy(dy) }
-  /* west */           return { x: cellCx(dx) - TILE / 2, y: cellCy(dy) }
-}
 
 const blockedMarkers = computed<BlkMarker[]>(() => {
   const markers: BlkMarker[] = []
-  const drawn = new Set<string>()
 
   for (const { id, dx, dy } of placedLocations.value) {
     const loc = locationMap.value[id]
@@ -201,12 +187,7 @@ const blockedMarkers = computed<BlkMarker[]>(() => {
 
     for (const [dir, exit] of Object.entries(loc.exits) as [Direction, Exit][]) {
       if (!exit || exit.kind !== 'blocked') continue
-
-      const key = gutterKey(dx, dy, dir)
-      if (drawn.has(key)) continue
-      drawn.add(key)
-
-      markers.push(gutterMid(dx, dy, dir))
+      markers.push(departurePoint(dx, dy, dir))
     }
   }
   return markers
@@ -279,16 +260,6 @@ onBeforeUnmount(clearLongPress)
         />
       </template>
 
-      <!-- Blocked markers -->
-      <text
-        v-for="(blk, i) in blockedMarkers"
-        :key="`blk-${i}`"
-        :x="blk.x" :y="blk.y"
-        :class="$style.blockedMark"
-        dominant-baseline="middle"
-        text-anchor="middle"
-      >×</text>
-
       <!-- Location cells (drawn on top, covering interior portions of exit lines) -->
       <g
         v-for="{ id, dx, dy } in placedLocations"
@@ -346,7 +317,7 @@ onBeforeUnmount(clearLongPress)
         >✓</text>
       </g>
 
-      <!-- Departure asterisks (in front of cells) -->
+      <!-- Departure asterisks and blocked markers (in front of cells) -->
       <text
         v-for="(dep, i) in departureMarkers"
         :key="`dep-ast-${i}`"
@@ -355,6 +326,14 @@ onBeforeUnmount(clearLongPress)
         dominant-baseline="middle"
         text-anchor="middle"
       >*</text>
+      <text
+        v-for="(blk, i) in blockedMarkers"
+        :key="`blk-${i}`"
+        :x="blk.x" :y="blk.y"
+        :class="$style.blockedMark"
+        dominant-baseline="middle"
+        text-anchor="middle"
+      >×</text>
     </svg>
   </div>
 </template>
