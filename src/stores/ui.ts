@@ -1,5 +1,16 @@
 import { defineStore } from 'pinia'
+import type { LocationId } from '../types'
+import { useAtlasStore } from './atlas'
 
 export const useUiStore = defineStore('ui', {
-  state: () => ({}),
+  state: () => ({
+    selectedLocationId: null as LocationId | null,
+  }),
+
+  getters: {
+    displayCenter(): LocationId | null {
+      const atlasStore = useAtlasStore()
+      return atlasStore.activeSession?.displayCenter ?? null
+    },
+  },
 })

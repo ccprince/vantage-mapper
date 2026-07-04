@@ -6,6 +6,11 @@ import LocationDetail from './components/LocationDetail.vue'
 import MapGrid from './components/MapGrid.vue'
 import SubMapView from './components/SubMapView.vue'
 import JumpToLocation from './components/JumpToLocation.vue'
+import { useAtlasStore } from './stores/atlas'
+import { useUiStore } from './stores/ui'
+
+const atlasStore = useAtlasStore()
+const uiStore = useUiStore()
 
 type AppView = 'home' | 'session' | 'atlas' | 'prev-sessions'
 
@@ -41,6 +46,13 @@ function onSessionSubmit(name: string) {
   showSessionManager.value = false
   view.value = 'session'
   selectedLocation.value = null
+}
+
+function onSelectLocation(id: LocationId) {
+  const loc = atlasStore.locations[id]
+  if (!loc) return
+  selectedLocation.value = loc
+  uiStore.selectedLocationId = id
 }
 
 function toggleDemoPanel() {
@@ -96,7 +108,7 @@ function onOpenSubMap(type: SubMapType) {
 
     <div :class="$style.appBody">
       <div :class="$style.mapArea">
-        <MapGrid />
+        <MapGrid @select-location="onSelectLocation" />
       </div>
       <transition name="panel">
         <aside v-if="selectedLocation" :class="$style.detailPanel">
