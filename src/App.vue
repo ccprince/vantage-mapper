@@ -102,6 +102,11 @@ function onTeleport(id: LocationId) {
   uiStore.selectedLocationId = id
 }
 
+function onJumpTo(id: LocationId) {
+  onTeleport(id)
+  showJumpTo.value = false
+}
+
 function onOpenSubMap(type: SubMapType) {
   if (!selectedLocation.value) return
   activeSubMap.value = { type, parentLocationId: selectedLocation.value.id }
@@ -195,7 +200,7 @@ function onReviewCenterMap(id: LocationId) {
       </transition>
     </div>
 
-    <JumpToLocation v-if="showJumpTo" @close="showJumpTo = false" @navigate="() => {}" />
+    <JumpToLocation v-if="showJumpTo" @close="showJumpTo = false" @navigate="onJumpTo" />
     <SubMapView
       v-if="activeSubMap"
       :type="activeSubMap.type"

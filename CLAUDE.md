@@ -48,4 +48,4 @@ docs/
 - `actionTaken` is per-session and can be toggled freely within that session.
 - The `version` field in `PersistentAtlas` must be incremented whenever the schema changes, with a migration function added to `storage.ts`.
 - `<MapGrid>` must never read from localStorage directly — all data flows through stores.
-- Reverse exits are auto-populated only when a new location is created via a regular (non-departure) exit. If the destination already exists, its exits are left untouched.
+- Reverse exits are auto-populated via a regular (non-departure) exit when: (a) the destination is newly created, or (b) the destination already exists but its exit in the opposite direction is currently null. If the destination already has a non-null exit in the opposite direction, it is left untouched.

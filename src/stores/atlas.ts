@@ -50,8 +50,11 @@ export const useAtlasStore = defineStore('atlas', {
 
       loc.exits[dir] = exit
 
-      if (createdNew && exit !== null && exit.kind === 'location') {
-        this.locations[exit.id].exits[OPPOSITE[dir]] = { kind: 'location', id: locationId }
+      if (exit !== null && exit.kind === 'location') {
+        const reverse = OPPOSITE[dir]
+        if (createdNew || this.locations[exit.id].exits[reverse] === null) {
+          this.locations[exit.id].exits[reverse] = { kind: 'location', id: locationId }
+        }
       }
     },
 
