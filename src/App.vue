@@ -25,21 +25,6 @@ const activeSubMap = ref<{ type: SubMapType; parentLocationId: LocationId } | nu
 const reviewedSession = ref<GameSession | null>(null)
 const reviewedSessionCenter = ref<LocationId | null>(null)
 
-// Placeholder location shown while the map/store is not yet wired up
-const demoLocation: Location = {
-  id: '042',
-  exits: {
-    north: { kind: 'location', id: '041' },
-    east: { kind: 'departure', id: null },
-    south: null,
-    west: { kind: 'blocked' },
-  },
-  hasInterior: true,
-  hasAerial: false,
-  hasUnderground: false,
-  notes: '',
-}
-
 function openNewSession() {
   showSessionManager.value = true
 }
@@ -117,10 +102,6 @@ function onTeleport(id: LocationId) {
   uiStore.selectedLocationId = id
 }
 
-function toggleDemoPanel() {
-  selectedLocation.value = selectedLocation.value ? null : demoLocation
-}
-
 function onOpenSubMap(type: SubMapType) {
   if (!selectedLocation.value) return
   activeSubMap.value = { type, parentLocationId: selectedLocation.value.id }
@@ -181,9 +162,6 @@ function onReviewCenterMap(id: LocationId) {
     <header :class="$style.appHeader">
       <span :class="$style.headerSessionName">{{ atlasStore.activeSession?.name || 'Session' }}</span>
       <div :class="$style.headerActions">
-        <button :class="$style.headerBtn" @click="toggleDemoPanel">
-          {{ selectedLocation ? 'Close panel' : 'Demo panel' }}
-        </button>
         <button :class="$style.headerBtn" @click="showJumpTo = true">Jump to…</button>
         <button
           :class="[$style.headerBtn, $style.zoomBtn]"
