@@ -13,6 +13,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
+  go: [locationId: LocationId]
   centerMap: [locationId: LocationId]
   teleport: [locationId: LocationId]
   openSubMap: [type: SubMapType]
@@ -187,9 +188,9 @@ function onActionTaken() {
                 {{ exitDescription(location.exits[dir]) }}
               </span>
               <button
-                v-if="exitDestination(location.exits[dir])"
+                v-if="inSession && exitDestination(location.exits[dir])"
                 :class="$style.goBtn"
-                @click="emit('centerMap', exitDestination(location.exits[dir])!)"
+                @click="emit('go', exitDestination(location.exits[dir])!)"
               >Go</button>
               <button :class="$style.editBtn" @click="startEdit(dir)">Edit</button>
             </div>

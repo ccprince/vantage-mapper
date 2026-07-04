@@ -66,6 +66,15 @@ function onCenterMap(id: LocationId) {
   uiStore.selectedLocationId = id
 }
 
+function onGo(id: LocationId) {
+  const session = atlasStore.activeSession
+  if (!session) return
+  if (!(id in atlasStore.locations)) atlasStore.addLocation(id)
+  session.currentLocationId = id
+  selectedLocation.value = atlasStore.locations[id]
+  uiStore.selectedLocationId = id
+}
+
 function onTeleport(id: LocationId) {
   const session = atlasStore.activeSession
   if (!session) return
@@ -147,6 +156,7 @@ const pastSessions = computed(() =>
             :is-current-location="atlasStore.activeSession?.currentLocationId === selectedLocation.id"
             :action-taken="isActionTaken(selectedLocation.id)"
             @close="selectedLocation = null"
+            @go="onGo"
             @center-map="onCenterMap"
             @teleport="onTeleport"
             @open-sub-map="onOpenSubMap"
