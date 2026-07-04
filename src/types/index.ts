@@ -32,6 +32,7 @@ export interface SubMap {
   locations: Record<LocationId, SubMapLocation>
   currentLocationId: LocationId
   visitedLocations: LocationId[]
+  actionTaken: Record<LocationId, boolean>
 }
 
 export interface GameSession {

@@ -1,7 +1,7 @@
 import type { PersistentAtlas } from '../types'
 
 const STORAGE_KEY = 'vantage-atlas'
-export const CURRENT_VERSION = 2
+export const CURRENT_VERSION = 3
 
 export function loadAtlas(): PersistentAtlas | null {
   try {
@@ -34,6 +34,13 @@ function migrate(atlas: PersistentAtlas): PersistentAtlas {
       if (!sm.visitedLocations) {
         sm.visitedLocations = sm.currentLocationId ? [sm.currentLocationId] : []
       }
+    }
+  }
+  if ((atlas.version ?? 0) < 3) {
+    // Add actionTaken to existing sub-maps.
+    for (const subMap of Object.values(atlas.subMaps ?? {})) {
+      const sm = subMap as any
+      if (!sm.actionTaken) sm.actionTaken = {}
     }
   }
   return { ...atlas, version: CURRENT_VERSION }

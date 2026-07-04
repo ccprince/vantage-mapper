@@ -6,6 +6,7 @@ import { useAtlasStore } from '../stores/atlas'
 const props = defineProps<{
   location: SubMapLocation
   subMapId: string
+  actionTaken?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -117,6 +118,12 @@ function exitDestination(exit: Exit): LocationId | null {
   return null
 }
 
+// --- Action taken ---
+
+function onActionTaken() {
+  atlasStore.toggleSubMapActionTaken(props.subMapId, props.location.id)
+}
+
 // --- Notes ---
 
 const notesDraft = ref(props.location.notes)
@@ -135,6 +142,21 @@ function saveNotes() {
     </header>
 
     <div :class="$style.body">
+      <!-- Action taken -->
+      <div :class="$style.sessionRow">
+        <label :class="[$style.checkboxLabel, $style.checkboxLabelClickable]">
+          <input
+            type="checkbox"
+            :class="$style.checkbox"
+            :checked="actionTaken"
+            @change="onActionTaken"
+          />
+          <span :class="[$style.checkboxText, actionTaken && $style.checkboxTextChecked]">
+            Action taken
+          </span>
+        </label>
+      </div>
+
       <!-- Exits -->
       <section :class="$style.section">
         <div :class="$style.sectionHeader">
@@ -265,6 +287,39 @@ function saveNotes() {
   flex: 1;
   overflow-y: auto;
   padding: 0 0 8px;
+}
+
+.sessionRow {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: default;
+  user-select: none;
+}
+.checkboxLabelClickable {
+  cursor: pointer;
+}
+.checkboxLabelClickable:hover .checkboxText {
+  color: var(--color-text);
+}
+
+.checkbox {
+  accent-color: var(--color-action-taken);
+  width: 14px;
+  height: 14px;
+}
+
+.checkboxText {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+.checkboxTextChecked {
+  color: var(--color-action-taken);
 }
 
 .section {

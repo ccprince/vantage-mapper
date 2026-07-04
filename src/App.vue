@@ -252,6 +252,7 @@ function onReviewCenterMap(id: LocationId) {
           :sub-map-locations="atlasStore.subMaps[`${activeSubMap.parentLocationId}-${activeSubMap.type}`]?.locations"
           :session-visited="atlasStore.subMaps[`${activeSubMap.parentLocationId}-${activeSubMap.type}`]?.visitedLocations"
           :session-current-location-id="atlasStore.subMaps[`${activeSubMap.parentLocationId}-${activeSubMap.type}`]?.currentLocationId"
+          :session-action-taken="atlasStore.subMaps[`${activeSubMap.parentLocationId}-${activeSubMap.type}`]?.actionTaken"
           @select-location="onSelectSubMapLocation"
         />
       </div>
@@ -260,6 +261,7 @@ function onReviewCenterMap(id: LocationId) {
           <SubMapLocationDetail
             :location="selectedSubMapLocation"
             :sub-map-id="`${activeSubMap.parentLocationId}-${activeSubMap.type}`"
+            :action-taken="!!atlasStore.subMaps[`${activeSubMap.parentLocationId}-${activeSubMap.type}`]?.actionTaken[selectedSubMapLocation.id]"
             @close="selectedSubMapLocation = null; uiStore.selectedLocationId = null"
             @go="onSubMapGo"
             @center-map="onSubMapCenterMap"

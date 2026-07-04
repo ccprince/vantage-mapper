@@ -83,6 +83,7 @@ export const useAtlasStore = defineStore('atlas', {
         locations: { [startingLocationId]: startLoc },
         currentLocationId: startingLocationId,
         visitedLocations: [startingLocationId],
+        actionTaken: {},
       }
       this.subMaps[id] = subMap
       return subMap
@@ -138,6 +139,12 @@ export const useAtlasStore = defineStore('atlas', {
       if (!subMap.visitedLocations.includes(locationId)) {
         subMap.visitedLocations.push(locationId)
       }
+    },
+
+    toggleSubMapActionTaken(subMapId: string, locationId: LocationId) {
+      const subMap = this.subMaps[subMapId]
+      if (!subMap) return
+      subMap.actionTaken[locationId] = !subMap.actionTaken[locationId]
     },
   },
 })
