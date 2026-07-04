@@ -27,75 +27,78 @@ const $style = useCssModule()
 // --- Exit editing ---
 
 type EditKind = 'unknown' | 'location' | 'departure' | 'blocked'
-
-const editingDir = ref<Direction | null>(null)
-const editKind = ref<EditKind>('unknown')
-const editIdValue = ref('')
-const editIdTouched = ref(false)
+type ExitDraft = { kind: EditKind; id: string }
 
 const DIRECTIONS: Direction[] = ['north', 'east', 'south', 'west']
 const DIR_LABEL: Record<Direction, string> = { north: 'N', east: 'E', south: 'S', west: 'W' }
 const DIR_FULL: Record<Direction, string> = { north: 'North', east: 'East', south: 'South', west: 'West' }
 
-const editIdError = computed(() => {
-  if (!editIdTouched.value) return ''
-  if (editKind.value === 'location') {
-    if (!/^\d{3}$/.test(editIdValue.value)) return 'Enter a 3-digit location ID'
-  } else if (editKind.value === 'departure' && editIdValue.value !== '') {
-    if (!/^\d{3}$/.test(editIdValue.value)) return '3-digit ID or leave blank'
+const editingExits = ref(false)
+const exitDrafts = ref<Record<Direction, ExitDraft>>({
+  north: { kind: 'location', id: '' },
+  east: { kind: 'location', id: '' },
+  south: { kind: 'location', id: '' },
+  west: { kind: 'location', id: '' },
+})
+const exitDraftTouched = ref<Record<Direction, boolean>>({
+  north: false, east: false, south: false, west: false,
+})
+
+watch(() => props.location.id, () => { editingExits.value = false })
+
+function draftFromExit(exit: Exit): ExitDraft {
+  if (exit === null) return { kind: 'location', id: '' }
+  if (exit.kind === 'location') return { kind: 'location', id: exit.id }
+  if (exit.kind === 'departure') return { kind: 'departure', id: exit.id ?? '' }
+  return { kind: 'blocked', id: '' }
+}
+
+function startEditExits() {
+  for (const dir of DIRECTIONS) {
+    exitDrafts.value[dir] = draftFromExit(props.location.exits[dir])
+    exitDraftTouched.value[dir] = false
   }
+  editingExits.value = true
+}
+
+function cancelEditExits() {
+  editingExits.value = false
+}
+
+function exitDraftError(dir: Direction): string {
+  if (!exitDraftTouched.value[dir]) return ''
+  const { kind, id } = exitDrafts.value[dir]
+  if (kind === 'location' && !/^\d{3}$/.test(id)) return 'Enter a 3-digit location ID'
+  if (kind === 'departure' && id !== '' && !/^\d{3}$/.test(id)) return '3-digit ID or leave blank'
   return ''
-})
+}
 
+const exitDraftsValid = computed(() =>
+  DIRECTIONS.every(dir => {
+    const { kind, id } = exitDrafts.value[dir]
+    if (kind === 'location') return /^\d{3}$/.test(id)
+    if (kind === 'departure' && id !== '') return /^\d{3}$/.test(id)
+    return true
+  })
+)
 
-const editCanSave = computed(() => {
-  if (editKind.value === 'location') return /^\d{3}$/.test(editIdValue.value)
-  if (editKind.value === 'departure' && editIdValue.value !== '') return /^\d{3}$/.test(editIdValue.value)
-  return true
-})
-
-function startEdit(dir: Direction) {
-  editingDir.value = dir
-  editIdTouched.value = false
-  const exit = props.location.exits[dir]
-  if (exit === null) {
-    editKind.value = 'location'
-    editIdValue.value = ''
-  } else if (exit.kind === 'location') {
-    editKind.value = 'location'
-    editIdValue.value = exit.id
-  } else if (exit.kind === 'departure') {
-    editKind.value = 'departure'
-    editIdValue.value = exit.id ?? ''
-  } else {
-    editKind.value = 'blocked'
-    editIdValue.value = ''
+function saveEditExits() {
+  for (const dir of DIRECTIONS) exitDraftTouched.value[dir] = true
+  if (!exitDraftsValid.value) return
+  for (const dir of DIRECTIONS) {
+    const { kind, id } = exitDrafts.value[dir]
+    let exit: Exit
+    if (kind === 'location') exit = { kind: 'location', id }
+    else if (kind === 'departure') exit = { kind: 'departure', id: id || null }
+    else exit = { kind: 'blocked' }
+    atlasStore.setExit(props.location.id, dir, exit)
   }
+  editingExits.value = false
 }
 
-function cancelEdit() {
-  editingDir.value = null
-}
-
-function saveEdit() {
-  editIdTouched.value = true
-  if (!editCanSave.value) return
-
-  let exit: Exit
-  if (editKind.value === 'location') {
-    exit = { kind: 'location', id: editIdValue.value }
-  } else if (editKind.value === 'departure') {
-    exit = { kind: 'departure', id: editIdValue.value || null }
-  } else {
-    exit = { kind: 'blocked' }
-  }
-  atlasStore.setExit(props.location.id, editingDir.value!, exit)
-  editingDir.value = null
-}
-
-function onKindChange() {
-  editIdValue.value = ''
-  editIdTouched.value = false
+function onExitKindChange(dir: Direction) {
+  exitDrafts.value[dir].id = ''
+  exitDraftTouched.value[dir] = false
 }
 
 // --- Exit display ---
@@ -178,71 +181,67 @@ function onActionTaken() {
 
       <!-- Exits -->
       <section :class="$style.section">
-        <h3 :class="$style.sectionTitle">Exits</h3>
-        <div :class="$style.exits">
-          <template v-for="dir in DIRECTIONS" :key="dir">
-            <!-- Normal row -->
-            <div v-if="editingDir !== dir" :class="$style.exitRow">
-              <span :class="$style.dirLabel">{{ DIR_LABEL[dir] }}</span>
-              <span :class="[$style.exitStatus, exitStyleClass(location.exits[dir])]">
-                {{ exitDescription(location.exits[dir]) }}
-              </span>
-              <button
-                v-if="inSession && exitDestination(location.exits[dir])"
-                :class="$style.goBtn"
-                @click="emit('go', exitDestination(location.exits[dir])!)"
-              >Go</button>
-              <button :class="$style.editBtn" @click="startEdit(dir)">Edit</button>
-            </div>
+        <div :class="$style.sectionHeader">
+          <h3 :class="$style.sectionTitle">Exits</h3>
+          <button v-if="!editingExits" :class="$style.sectionEditBtn" @click="startEditExits">Edit</button>
+        </div>
 
-            <!-- Edit form -->
-            <div v-else :class="$style.exitEditor">
-              <div :class="$style.editorHeader">
-                <span :class="$style.dirLabel">{{ DIR_LABEL[dir] }}</span>
-                <span :class="$style.editorDirFull">{{ DIR_FULL[dir] }}</span>
-              </div>
+        <!-- Display rows -->
+        <div v-if="!editingExits" :class="$style.exits">
+          <div v-for="dir in DIRECTIONS" :key="dir" :class="$style.exitRow">
+            <span :class="$style.dirLabel">{{ DIR_LABEL[dir] }}</span>
+            <span :class="[$style.exitStatus, exitStyleClass(location.exits[dir])]">
+              {{ exitDescription(location.exits[dir]) }}
+            </span>
+            <button
+              v-if="inSession && exitDestination(location.exits[dir])"
+              :class="$style.goBtn"
+              @click="emit('go', exitDestination(location.exits[dir])!)"
+            >Go</button>
+          </div>
+        </div>
 
-              <div :class="$style.kindOptions">
-                <label v-for="k in (['location', 'departure', 'blocked'] as EditKind[])" :key="k" :class="$style.kindOption">
-                  <input
-                    type="radio"
-                    :value="k"
-                    v-model="editKind"
-                    @change="onKindChange"
-                  />
-                  <span :class="[$style.kindLabel, editKind === k && $style.kindLabelActive]">
-                    {{ k === 'location' ? 'Location' : k === 'departure' ? 'Departure' : 'Blocked' }}
-                  </span>
-                </label>
-              </div>
-
-              <div :class="$style.idInputRow">
+        <!-- Edit form -->
+        <div v-else :class="$style.exitEditorAll">
+          <div v-for="dir in DIRECTIONS" :key="dir" :class="$style.exitEditorRow">
+            <span :class="$style.dirLabel">{{ DIR_LABEL[dir] }}</span>
+            <div :class="$style.kindOptions">
+              <label v-for="k in (['location', 'departure', 'blocked'] as EditKind[])" :key="k" :class="$style.kindOption">
                 <input
-                  :class="[$style.idInput, editIdError && $style.idInputError]"
-                  v-model="editIdValue"
-                  type="text"
-                  maxlength="3"
-                  :placeholder="editKind === 'departure' ? 'Optional' : '000'"
-                  :disabled="editKind === 'blocked'"
-                  spellcheck="false"
-                  autocomplete="off"
-                  @blur="editIdTouched = true"
+                  type="radio"
+                  :value="k"
+                  v-model="exitDrafts[dir].kind"
+                  @change="onExitKindChange(dir)"
                 />
-                <span :class="$style.idInputLabel">
-                  {{ editKind === 'location' ? 'Destination ID' : editKind === 'departure' ? 'Destination ID (if known)' : '' }}
+                <span :class="[$style.kindLabel, exitDrafts[dir].kind === k && $style.kindLabelActive]">
+                  {{ k === 'location' ? 'Loc' : k === 'departure' ? 'Dep' : 'Blk' }}
                 </span>
-              </div>
-              <p v-if="editIdError" :class="$style.fieldError">{{ editIdError }}</p>
-
-              <div :class="$style.editorActions">
-                <button :class="[$style.btn, $style.btnGhost]" @click="cancelEdit">Cancel</button>
-                <button
-                  :class="[$style.btn, $style.btnPrimary, !editCanSave && $style.btnDisabled]"
-                  @click="saveEdit"
-                >Save</button>
-              </div>
+              </label>
             </div>
+            <input
+              :class="[$style.idInput, exitDraftError(dir) && $style.idInputError]"
+              v-model="exitDrafts[dir].id"
+              type="text"
+              maxlength="3"
+              :placeholder="exitDrafts[dir].kind === 'departure' ? 'opt' : exitDrafts[dir].kind === 'blocked' ? '' : '000'"
+              :disabled="exitDrafts[dir].kind === 'blocked'"
+              spellcheck="false"
+              autocomplete="off"
+              @blur="exitDraftTouched[dir] = true"
+            />
+          </div>
+          <template v-for="dir in DIRECTIONS" :key="`err-${dir}`">
+            <p v-if="exitDraftError(dir)" :class="$style.fieldError">
+              {{ DIR_FULL[dir] }}: {{ exitDraftError(dir) }}
+            </p>
           </template>
+          <div :class="$style.editorActions">
+            <button :class="[$style.btn, $style.btnGhost]" @click="cancelEditExits">Cancel</button>
+            <button
+              :class="[$style.btn, $style.btnPrimary, !exitDraftsValid && $style.btnDisabled]"
+              @click="saveEditExits"
+            >Save</button>
+          </div>
         </div>
       </section>
 
@@ -398,13 +397,34 @@ function onActionTaken() {
   border-bottom: 1px solid var(--color-border);
 }
 
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
 .sectionTitle {
-  margin: 0 0 10px;
+  margin: 0;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-text-dim);
+}
+
+.sectionEditBtn {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  padding: 3px 10px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.sectionEditBtn:hover {
+  border-color: var(--color-text-muted);
+  color: var(--color-text);
 }
 
 /* Exits */
@@ -466,47 +486,28 @@ function onActionTaken() {
   border-color: var(--color-cell-visited);
 }
 
-.editBtn {
-  background: none;
-  border: 1px solid var(--color-border);
-  border-radius: 3px;
-  color: var(--color-text-muted);
-  font-size: 13px;
-  padding: 4px 10px;
-  flex-shrink: 0;
-  transition: border-color 0.15s, color 0.15s;
-}
-.editBtn:hover {
-  border-color: var(--color-text-muted);
-  color: var(--color-text);
-}
-
-/* Exit editor */
-.exitEditor {
+/* Exit editor (all-at-once) */
+.exitEditorAll {
   background: var(--color-cell-unknown);
   border: 1px solid var(--color-border);
   border-radius: 5px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 4px;
 }
 
-.editorHeader {
+.exitEditorRow {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.editorDirFull {
-  font-size: 12px;
-  color: var(--color-text-muted);
+  padding: 3px 0;
 }
 
 .kindOptions {
   display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1;
 }
 
 .kindOption {
@@ -517,13 +518,14 @@ function onActionTaken() {
 }
 
 .kindLabel {
-  font-size: 12px;
-  padding: 4px 10px;
+  font-size: 11px;
+  padding: 3px 8px;
   border: 1px solid var(--color-border);
   border-radius: 3px;
   color: var(--color-text-muted);
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s, background 0.15s;
+  white-space: nowrap;
 }
 .kindLabel:hover {
   border-color: var(--color-text-muted);
@@ -535,28 +537,18 @@ function onActionTaken() {
   background: rgba(91, 143, 168, 0.1);
 }
 
-.idInputRow {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.idInputLabel {
-  font-size: 11px;
-  color: var(--color-text-dim);
-}
-
 .idInput {
   background: var(--color-map-surface);
   border: 1px solid var(--color-border);
   border-radius: 4px;
-  padding: 6px 10px;
+  padding: 4px 8px;
   color: var(--color-text);
   font-family: var(--font-id);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
   letter-spacing: 0.1em;
-  width: 80px;
+  width: 58px;
+  flex-shrink: 0;
   outline: none;
   transition: border-color 0.15s;
 }
@@ -572,7 +564,7 @@ function onActionTaken() {
 }
 
 .fieldError {
-  margin: 0;
+  margin: 2px 0 0;
   font-size: 11px;
   color: var(--color-error);
 }
@@ -581,6 +573,7 @@ function onActionTaken() {
   display: flex;
   justify-content: flex-end;
   gap: 6px;
+  margin-top: 6px;
 }
 
 /* Sub-maps */
