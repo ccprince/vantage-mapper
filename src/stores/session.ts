@@ -4,6 +4,12 @@ import { useAtlasStore } from './atlas'
 
 export const useSessionStore = defineStore('session', {
   actions: {
+    toggleActionTaken(locationId: LocationId) {
+      const atlasStore = useAtlasStore()
+      const session = atlasStore.activeSession
+      if (session) session.actionTaken[locationId] = !session.actionTaken[locationId]
+    },
+
     startSession(name: string, startingLocationId: LocationId) {
       const atlasStore = useAtlasStore()
 

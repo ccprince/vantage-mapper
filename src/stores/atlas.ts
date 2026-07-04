@@ -1,5 +1,9 @@
 import { defineStore } from 'pinia'
-import type { GameSession, Location, LocationId, SubMap } from '../types'
+import type { Direction, Exit, GameSession, Location, LocationId, SubMap, SubMapType } from '../types'
+
+const OPPOSITE: Record<Direction, Direction> = {
+  north: 'south', south: 'north', east: 'west', west: 'east',
+}
 
 export const useAtlasStore = defineStore('atlas', {
   state: () => ({
@@ -87,6 +91,38 @@ export const useAtlasStore = defineStore('atlas', {
       }
       this.locations[id] = loc
       return loc
+    },
+
+    setExit(locationId: LocationId, dir: Direction, exit: Exit) {
+      const loc = this.locations[locationId]
+      if (!loc) return
+
+      let createdNew = false
+      if (exit !== null && exit.kind === 'location') {
+        if (!(exit.id in this.locations)) {
+          this.addLocation(exit.id)
+          createdNew = true
+        }
+      }
+
+      loc.exits[dir] = exit
+
+      if (createdNew && exit !== null && exit.kind === 'location') {
+        this.locations[exit.id].exits[OPPOSITE[dir]] = { kind: 'location', id: locationId }
+      }
+    },
+
+    setNotes(locationId: LocationId, notes: string) {
+      const loc = this.locations[locationId]
+      if (loc) loc.notes = notes
+    },
+
+    setSubMapFlag(locationId: LocationId, type: SubMapType, value: boolean) {
+      const loc = this.locations[locationId]
+      if (!loc) return
+      if (type === 'interior') loc.hasInterior = value
+      else if (type === 'aerial') loc.hasAerial = value
+      else loc.hasUnderground = value
     },
   },
 })

@@ -56,6 +56,26 @@ function onSelectLocation(id: LocationId) {
   uiStore.selectedLocationId = id
 }
 
+function isActionTaken(id: LocationId): boolean {
+  return !!atlasStore.activeSession?.actionTaken[id]
+}
+
+function onCenterMap(id: LocationId) {
+  const session = atlasStore.activeSession
+  if (session) session.displayCenter = id
+  uiStore.selectedLocationId = id
+}
+
+function onTeleport(id: LocationId) {
+  const session = atlasStore.activeSession
+  if (!session) return
+  if (!(id in atlasStore.locations)) atlasStore.addLocation(id)
+  session.currentLocationId = id
+  session.displayCenter = id
+  selectedLocation.value = atlasStore.locations[id]
+  uiStore.selectedLocationId = id
+}
+
 function toggleDemoPanel() {
   selectedLocation.value = selectedLocation.value ? null : demoLocation
 }
@@ -124,11 +144,11 @@ const pastSessions = computed(() =>
           <LocationDetail
             :location="selectedLocation"
             :in-session="true"
-            :is-current-location="true"
-            :action-taken="false"
+            :is-current-location="atlasStore.activeSession?.currentLocationId === selectedLocation.id"
+            :action-taken="isActionTaken(selectedLocation.id)"
             @close="selectedLocation = null"
-            @center-map="() => {}"
-            @teleport="() => {}"
+            @center-map="onCenterMap"
+            @teleport="onTeleport"
             @open-sub-map="onOpenSubMap"
           />
         </aside>
@@ -171,7 +191,7 @@ const pastSessions = computed(() =>
             :location="selectedLocation"
             :in-session="false"
             @close="selectedLocation = null"
-            @center-map="() => {}"
+            @center-map="onCenterMap"
             @open-sub-map="onOpenSubMap"
           />
         </aside>

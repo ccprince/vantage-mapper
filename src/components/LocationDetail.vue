@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, useCssModule } from 'vue'
 import type { Location, LocationId, Direction, Exit, SubMapType } from '../types'
+import { useAtlasStore } from '../stores/atlas'
+import { useSessionStore } from '../stores/session'
 
 const props = defineProps<{
   location: Location
@@ -15,6 +17,9 @@ const emit = defineEmits<{
   teleport: [locationId: LocationId]
   openSubMap: [type: SubMapType]
 }>()
+
+const atlasStore = useAtlasStore()
+const sessionStore = useSessionStore()
 
 const $style = useCssModule()
 
@@ -74,7 +79,16 @@ function cancelEdit() {
 function saveEdit() {
   editIdTouched.value = true
   if (!editCanSave.value) return
-  // Store call goes here once wired up
+
+  let exit: Exit
+  if (editKind.value === 'location') {
+    exit = { kind: 'location', id: editIdValue.value }
+  } else if (editKind.value === 'departure') {
+    exit = { kind: 'departure', id: editIdValue.value || null }
+  } else {
+    exit = { kind: 'blocked' }
+  }
+  atlasStore.setExit(props.location.id, editingDir.value!, exit)
   editingDir.value = null
 }
 
@@ -111,15 +125,27 @@ function exitDestination(exit: Exit): LocationId | null {
 const notesDraft = ref(props.location.notes)
 watch(() => props.location.notes, (v) => { notesDraft.value = v })
 
+function saveNotes() {
+  atlasStore.setNotes(props.location.id, notesDraft.value)
+}
+
 // --- Sub-maps ---
 
-const subMaps = computed(() => {
-  const maps: { type: SubMapType; label: string }[] = []
-  if (props.location.hasInterior) maps.push({ type: 'interior', label: 'Interior' })
-  if (props.location.hasAerial) maps.push({ type: 'aerial', label: 'Aerial' })
-  if (props.location.hasUnderground) maps.push({ type: 'underground', label: 'Underground' })
-  return maps
-})
+const SUB_MAP_TYPES: { type: SubMapType; label: string; flag: 'hasInterior' | 'hasAerial' | 'hasUnderground' }[] = [
+  { type: 'interior', label: 'Interior', flag: 'hasInterior' },
+  { type: 'aerial', label: 'Aerial', flag: 'hasAerial' },
+  { type: 'underground', label: 'Underground', flag: 'hasUnderground' },
+]
+
+function toggleSubMap(type: SubMapType, flag: 'hasInterior' | 'hasAerial' | 'hasUnderground') {
+  atlasStore.setSubMapFlag(props.location.id, type, !props.location[flag])
+}
+
+// --- Action taken ---
+
+function onActionTaken() {
+  sessionStore.toggleActionTaken(props.location.id)
+}
 </script>
 
 <template>
@@ -136,12 +162,12 @@ const subMaps = computed(() => {
     <div :class="$style.body">
       <!-- Session status row -->
       <div v-if="inSession" :class="$style.sessionRow">
-        <label :class="$style.checkboxLabel">
+        <label :class="[$style.checkboxLabel, $style.checkboxLabelClickable]">
           <input
             type="checkbox"
             :class="$style.checkbox"
             :checked="actionTaken"
-            disabled
+            @change="onActionTaken"
           />
           <span :class="[$style.checkboxText, actionTaken && $style.checkboxTextChecked]">
             Action taken
@@ -220,15 +246,20 @@ const subMaps = computed(() => {
       </section>
 
       <!-- Sub-maps -->
-      <section v-if="subMaps.length > 0" :class="$style.section">
+      <section :class="$style.section">
         <h3 :class="$style.sectionTitle">Sub-maps</h3>
-        <div :class="$style.subMapBtns">
-          <button
-            v-for="sm in subMaps"
-            :key="sm.type"
-            :class="$style.subMapBtn"
-            @click="emit('openSubMap', sm.type)"
-          >{{ sm.label }}</button>
+        <div :class="$style.subMapRows">
+          <div v-for="sm in SUB_MAP_TYPES" :key="sm.type" :class="$style.subMapRow">
+            <button
+              :class="[$style.subMapToggle, location[sm.flag] && $style.subMapToggleActive]"
+              @click="toggleSubMap(sm.type, sm.flag)"
+            >{{ sm.label }}</button>
+            <button
+              v-if="location[sm.flag]"
+              :class="$style.subMapOpenBtn"
+              @click="emit('openSubMap', sm.type)"
+            >Open</button>
+          </div>
         </div>
       </section>
 
@@ -240,6 +271,7 @@ const subMaps = computed(() => {
           v-model="notesDraft"
           placeholder="Add notes…"
           rows="4"
+          @blur="saveNotes"
         />
       </section>
     </div>
@@ -336,6 +368,13 @@ const subMaps = computed(() => {
   align-items: center;
   gap: 8px;
   cursor: default;
+  user-select: none;
+}
+.checkboxLabelClickable {
+  cursor: pointer;
+}
+.checkboxLabelClickable:hover .checkboxText {
+  color: var(--color-text);
 }
 
 .checkbox {
@@ -544,24 +583,55 @@ const subMaps = computed(() => {
 }
 
 /* Sub-maps */
-.subMapBtns {
+.subMapRows {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.subMapBtn {
+.subMapRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.subMapToggle {
   background: var(--color-cell-unknown);
   border: 1px solid var(--color-border);
   border-radius: 4px;
-  color: var(--color-text);
+  color: var(--color-text-muted);
   font-size: 13px;
-  padding: 6px 14px;
-  transition: background 0.15s, border-color 0.15s;
+  padding: 5px 12px;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  min-width: 96px;
+  text-align: left;
 }
-.subMapBtn:hover {
-  background: var(--color-cell-known);
+.subMapToggle:hover {
   border-color: var(--color-text-muted);
+  color: var(--color-text);
+}
+.subMapToggleActive {
+  border-color: var(--color-cell-visited);
+  color: var(--color-cell-visited);
+  background: rgba(91, 143, 168, 0.1);
+}
+.subMapToggleActive:hover {
+  border-color: var(--color-cell-visited);
+  color: var(--color-cell-visited);
+}
+
+.subMapOpenBtn {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  padding: 5px 12px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.subMapOpenBtn:hover {
+  border-color: var(--color-text-muted);
+  color: var(--color-text);
 }
 
 /* Notes */
