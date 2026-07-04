@@ -88,6 +88,7 @@ function onGo(id: LocationId) {
   if (!session) return
   if (!(id in atlasStore.locations)) atlasStore.addLocation(id)
   session.currentLocationId = id
+  if (!session.visitedLocations.includes(id)) session.visitedLocations.push(id)
   selectedLocation.value = atlasStore.locations[id]
   uiStore.selectedLocationId = id
 }
@@ -98,6 +99,7 @@ function onTeleport(id: LocationId) {
   if (!(id in atlasStore.locations)) atlasStore.addLocation(id)
   session.currentLocationId = id
   session.displayCenter = id
+  if (!session.visitedLocations.includes(id)) session.visitedLocations.push(id)
   selectedLocation.value = atlasStore.locations[id]
   uiStore.selectedLocationId = id
 }
