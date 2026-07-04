@@ -1,15 +1,24 @@
 :root {
-  --color-bg: #1a1c22;
-  --color-map-surface: #23262f;
-  --color-cell-unknown: #2a2d38;
-  --color-cell-known: #3a4a5c;
-  --color-cell-visited: #5b8fa8;
-  --color-cell-selected: #a8c5d6;
-  --color-departure: #c97a3a;
-  --color-text: #d4dde8;
-  --color-action-taken: #7ec88a;
+  --color-bg:               #1a1c22;
+  --color-map-surface:      #23262f;
+  --color-cell-unknown:     #2a2d38;
+  --color-cell-known:       #3a4a5c;
+  --color-cell-visited:     #5b8fa8;
+  --color-cell-selected:    #a8c5d6;
+  --color-departure:        #c97a3a;
+  --color-text:             #d4dde8;
+  --color-action-taken:     #7ec88a;
 
-  --font-id: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+  --color-border:           #2e3140;
+  --color-surface-raised:   #2a2d38;
+  --color-text-muted:       #8899aa;
+  --color-text-dim:         #4a5568;
+  --color-error:            #e06c75;
+  --color-overlay:          rgba(10, 11, 16, 0.82);
+  --color-btn-primary-bg:   #3a5a70;
+  --color-btn-primary-hover:#4a7090;
+
+  --font-id:   'JetBrains Mono', 'IBM Plex Mono', monospace;
   --font-body: 'Inter', sans-serif;
 }
 
@@ -24,4 +33,19 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+input,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
 }
