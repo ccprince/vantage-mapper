@@ -6,6 +6,7 @@ export const useUiStore = defineStore('ui', {
   state: () => ({
     selectedLocationId: null as LocationId | null,
     zoomLevel: 'full' as 'full' | 'near',
+    atlasBrowseCenter: null as LocationId | null,
   }),
 
   getters: {

@@ -88,8 +88,8 @@ function cellCy(dy: number)   { return (dy + 13) * TILE + TILE / 2 }
 
 // ── Cell styling ───────────────────────────────────────────────
 function cellFill(id: LocationId): string {
-  if (id === selectedId.value)  return 'var(--color-cell-selected)'
-  if (visitedSet.value.has(id)) return 'var(--color-cell-visited)'
+  if (id === selectedId.value)                          return 'var(--color-cell-selected)'
+  if (!props.readOnly && visitedSet.value.has(id))      return 'var(--color-cell-visited)'
   return 'var(--color-cell-known)'
 }
 
@@ -210,7 +210,7 @@ let longPressFired = false
 
 function onCellClick(id: LocationId) {
   if (longPressFired) { longPressFired = false; return }
-  if (!props.readOnly) emit('selectLocation', id)
+  emit('selectLocation', id)
 }
 
 function onPointerDown(id: LocationId) {
@@ -285,7 +285,7 @@ onBeforeUnmount(clearLongPress)
       <g
         v-for="{ id, dx, dy } in placedLocations"
         :key="id"
-        :class="[!readOnly && $style.cellInteractive]"
+        :class="$style.cellInteractive"
         @click="onCellClick(id)"
         @pointerdown="onPointerDown(id)"
         @pointerup="clearLongPress"
@@ -302,7 +302,7 @@ onBeforeUnmount(clearLongPress)
         />
         <!-- Current location ring -->
         <rect
-          v-if="id === currentLocationId"
+          v-if="!readOnly && id === currentLocationId"
           :x="cellLeft(dx) - 2"
           :y="cellTop(dy) - 2"
           :width="CELL + 4"
@@ -329,7 +329,7 @@ onBeforeUnmount(clearLongPress)
         >I</text>
         <!-- Action taken (lower-right) -->
         <text
-          v-if="actionTakenMap[id]"
+          v-if="!readOnly && actionTakenMap[id]"
           :x="cellLeft(dx) + CELL - 3"
           :y="cellTop(dy) + CELL - 2"
           :class="$style.cellActionTaken"

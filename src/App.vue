@@ -66,6 +66,24 @@ function onCenterMap(id: LocationId) {
   uiStore.selectedLocationId = id
 }
 
+function enterAtlasView() {
+  const sessions = atlasStore.sessions
+  const lastSession = sessions[sessions.length - 1]
+  if (lastSession) {
+    uiStore.atlasBrowseCenter = lastSession.displayCenter
+  } else {
+    const ids = Object.keys(atlasStore.locations)
+    uiStore.atlasBrowseCenter = ids[0] ?? null
+  }
+  view.value = 'atlas'
+  selectedLocation.value = null
+}
+
+function onAtlasCenterMap(id: LocationId) {
+  uiStore.atlasBrowseCenter = id
+  uiStore.selectedLocationId = id
+}
+
 function onGo(id: LocationId) {
   const session = atlasStore.activeSession
   if (!session) return
@@ -110,7 +128,7 @@ const pastSessions = computed(() =>
       <button :class="[$style.navBtn, $style.navBtnPrimary]" @click="openNewSession">
         New Session
       </button>
-      <button :class="[$style.navBtn, $style.navBtnSecondary]" @click="view = 'atlas'">
+      <button :class="[$style.navBtn, $style.navBtnSecondary]" @click="enterAtlasView">
         View Atlas
       </button>
       <button :class="[$style.navBtn, $style.navBtnSecondary]" @click="view = 'prev-sessions'">
@@ -179,10 +197,6 @@ const pastSessions = computed(() =>
     <header :class="$style.appHeader">
       <span :class="$style.headerSessionName">Atlas</span>
       <div :class="$style.headerActions">
-        <button :class="$style.headerBtn" @click="toggleDemoPanel">
-          {{ selectedLocation ? 'Close panel' : 'Demo panel' }}
-        </button>
-        <button :class="$style.headerBtn" @click="showJumpTo = true">Jump to…</button>
         <button
           :class="[$style.headerBtn, $style.zoomBtn]"
           @click="uiStore.zoomLevel = uiStore.zoomLevel === 'full' ? 'near' : 'full'"
@@ -193,7 +207,11 @@ const pastSessions = computed(() =>
 
     <div :class="$style.appBody">
       <div :class="$style.mapArea">
-        <MapGrid :read-only="true" />
+        <MapGrid
+          :display-center="uiStore.atlasBrowseCenter ?? undefined"
+          :read-only="true"
+          @select-location="onSelectLocation"
+        />
       </div>
       <transition name="panel">
         <aside v-if="selectedLocation" :class="$style.detailPanel">
@@ -201,14 +219,13 @@ const pastSessions = computed(() =>
             :location="selectedLocation"
             :in-session="false"
             @close="selectedLocation = null"
-            @center-map="onCenterMap"
+            @center-map="onAtlasCenterMap"
             @open-sub-map="onOpenSubMap"
           />
         </aside>
       </transition>
     </div>
 
-    <JumpToLocation v-if="showJumpTo" @close="showJumpTo = false" @navigate="() => {}" />
     <SubMapView
       v-if="activeSubMap"
       :type="activeSubMap.type"
