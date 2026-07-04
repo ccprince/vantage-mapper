@@ -27,6 +27,8 @@ type ExitDraft = { kind: EditKind; id: string }
 const DIRECTIONS: Direction[] = ['north', 'east', 'south', 'west']
 const DIR_LABEL: Record<Direction, string> = { north: 'N', east: 'E', south: 'S', west: 'W' }
 const DIR_FULL: Record<Direction, string> = { north: 'North', east: 'East', south: 'South', west: 'West' }
+const DIR_GRID_ROW: Record<Direction, number> = { north: 1, east: 2, south: 3, west: 2 }
+const DIR_GRID_COL: Record<Direction, number> = { north: 2, east: 3, south: 2, west: 1 }
 
 const editingExits = ref(false)
 const exitDrafts = ref<Record<Direction, ExitDraft>>({
@@ -98,20 +100,6 @@ function onExitKindChange(dir: Direction) {
 
 // --- Exit display ---
 
-function exitDescription(exit: Exit): string {
-  if (exit === null) return 'Unknown'
-  if (exit.kind === 'location') return `→ ${exit.id}`
-  if (exit.kind === 'departure') return exit.id != null ? `Departure → ${exit.id}` : 'Departure'
-  return 'Blocked'
-}
-
-function exitStyleClass(exit: Exit): string {
-  if (exit === null) return $style.exitUnknown
-  if (exit.kind === 'location') return $style.exitLocation
-  if (exit.kind === 'departure') return $style.exitDeparture
-  return $style.exitBlocked
-}
-
 function exitDestination(exit: Exit): LocationId | null {
   if (!exit) return null
   if (exit.kind === 'location') return exit.id
@@ -168,17 +156,23 @@ function saveNotes() {
           <button v-if="!editingExits" :class="$style.sectionEditBtn" @click="startEditExits">Edit</button>
         </div>
 
-        <div v-if="!editingExits" :class="$style.exits">
-          <div v-for="dir in DIRECTIONS" :key="dir" :class="$style.exitRow">
-            <span :class="$style.dirLabel">{{ DIR_LABEL[dir] }}</span>
-            <span :class="[$style.exitStatus, exitStyleClass(location.exits[dir])]">
-              {{ exitDescription(location.exits[dir]) }}
-            </span>
+        <!-- Compass display -->
+        <div v-if="!editingExits" :class="$style.compassGrid">
+          <div
+            v-for="dir in DIRECTIONS"
+            :key="dir"
+            :class="$style.compassPoint"
+            :style="{ gridRow: DIR_GRID_ROW[dir], gridColumn: DIR_GRID_COL[dir] }"
+          >
             <button
               v-if="exitDestination(location.exits[dir])"
               :class="$style.goBtn"
               @click="emit('go', exitDestination(location.exits[dir])!)"
-            >Go</button>
+            >
+              <span :class="$style.compassDestId">{{ exitDestination(location.exits[dir]) }}</span>
+              <span>Go</span>
+            </button>
+            <span v-else :class="$style.compassDirLabel">{{ DIR_LABEL[dir] }}</span>
           </div>
         </div>
 
@@ -366,7 +360,7 @@ function saveNotes() {
 }
 
 .sectionEditBtn {
-  background: none;
+  background: var(--color-cell-unknown);
   border: 1px solid var(--color-border);
   border-radius: 3px;
   color: var(--color-text-muted);
@@ -379,19 +373,62 @@ function saveNotes() {
   color: var(--color-text);
 }
 
-.exits {
+/* Exits — compass display */
+.compassGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: auto auto auto;
+  gap: 8px 4px;
+  padding: 4px 0 8px;
+  justify-items: center;
+  align-items: center;
+}
+
+.compassPoint {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-}
-
-.exitRow {
-  display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 0;
+  gap: 5px;
+  min-width: 56px;
+  min-height: 44px;
+  justify-content: center;
 }
 
+.compassDirLabel {
+  font-family: var(--font-id);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-dim);
+}
+
+.compassDestId {
+  font-family: var(--font-id);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text);
+  letter-spacing: 0.08em;
+}
+
+.goBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: var(--color-cell-unknown);
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  color: var(--color-cell-visited);
+  font-size: 13px;
+  padding: 8px 14px;
+  min-width: 56px;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.goBtn:hover {
+  border-color: var(--color-cell-visited);
+  background: rgba(91, 143, 168, 0.08);
+}
+
+/* Edit form dir label */
 .dirLabel {
   font-family: var(--font-id);
   font-size: 14px;
@@ -399,42 +436,6 @@ function saveNotes() {
   color: var(--color-text-muted);
   width: 18px;
   flex-shrink: 0;
-}
-
-.exitStatus {
-  flex: 1;
-  font-size: 14px;
-}
-.exitUnknown {
-  color: var(--color-text-dim);
-  font-style: italic;
-}
-.exitLocation {
-  color: var(--color-text);
-  font-family: var(--font-id);
-  font-size: 14px;
-}
-.exitDeparture {
-  color: var(--color-departure);
-  font-family: var(--font-id);
-  font-size: 14px;
-}
-.exitBlocked {
-  color: var(--color-text-dim);
-}
-
-.goBtn {
-  background: none;
-  border: 1px solid var(--color-border);
-  border-radius: 3px;
-  color: var(--color-cell-visited);
-  font-size: 13px;
-  padding: 4px 10px;
-  flex-shrink: 0;
-  transition: border-color 0.15s, color 0.15s;
-}
-.goBtn:hover {
-  border-color: var(--color-cell-visited);
 }
 
 .exitEditorAll {
