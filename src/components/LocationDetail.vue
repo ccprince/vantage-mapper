@@ -15,7 +15,7 @@ const emit = defineEmits<{
   close: []
   go: [locationId: LocationId]
   centerMap: [locationId: LocationId]
-  teleport: [locationId: LocationId]
+  jump: [locationId: LocationId]
   openSubMap: [type: SubMapType]
 }>()
 
@@ -284,8 +284,8 @@ function onActionTaken() {
       <button
         v-if="inSession"
         :class="[$style.btn, $style.btnPrimary]"
-        @click="emit('teleport', location.id)"
-      >Teleport here</button>
+        @click="emit('jump', location.id)"
+      >Jump here</button>
     </footer>
   </div>
 </template>

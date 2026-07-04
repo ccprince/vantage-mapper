@@ -97,7 +97,7 @@ function onGo(id: LocationId) {
   uiStore.selectedLocationId = id
 }
 
-function onTeleport(id: LocationId) {
+function onJump(id: LocationId) {
   const session = atlasStore.activeSession
   if (!session) return
   if (!(id in atlasStore.locations)) atlasStore.addLocation(id)
@@ -109,7 +109,7 @@ function onTeleport(id: LocationId) {
 }
 
 function onJumpTo(id: LocationId) {
-  onTeleport(id)
+  onJump(id)
   showJumpTo.value = false
 }
 
@@ -302,7 +302,7 @@ function onReviewCenterMap(id: LocationId) {
             @close="selectedLocation = null; uiStore.selectedLocationId = null"
             @go="onGo"
             @center-map="onCenterMap"
-            @teleport="onTeleport"
+            @jump="onJump"
             @open-sub-map="onOpenSubMap"
           />
         </aside>
