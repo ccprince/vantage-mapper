@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { Location, LocationId, SubMapType } from './types'
 import SessionManager from './components/SessionManager.vue'
 import LocationDetail from './components/LocationDetail.vue'
@@ -7,9 +7,11 @@ import MapGrid from './components/MapGrid.vue'
 import SubMapView from './components/SubMapView.vue'
 import JumpToLocation from './components/JumpToLocation.vue'
 import { useAtlasStore } from './stores/atlas'
+import { useSessionStore } from './stores/session'
 import { useUiStore } from './stores/ui'
 
 const atlasStore = useAtlasStore()
+const sessionStore = useSessionStore()
 const uiStore = useUiStore()
 
 type AppView = 'home' | 'session' | 'atlas' | 'prev-sessions'
@@ -17,7 +19,6 @@ type AppView = 'home' | 'session' | 'atlas' | 'prev-sessions'
 const view = ref<AppView>('home')
 const showSessionManager = ref(false)
 const showJumpTo = ref(false)
-const sessionName = ref('')
 
 const selectedLocation = ref<Location | null>(null)
 const activeSubMap = ref<{ type: SubMapType; parentLocationId: LocationId } | null>(null)
@@ -41,8 +42,8 @@ function openNewSession() {
   showSessionManager.value = true
 }
 
-function onSessionSubmit(name: string) {
-  sessionName.value = name
+function onSessionSubmit(name: string, startingLocationId: LocationId) {
+  sessionStore.startSession(name, startingLocationId)
   showSessionManager.value = false
   view.value = 'session'
   selectedLocation.value = null
@@ -63,6 +64,10 @@ function onOpenSubMap(type: SubMapType) {
   if (!selectedLocation.value) return
   activeSubMap.value = { type, parentLocationId: selectedLocation.value.id }
 }
+
+const pastSessions = computed(() =>
+  atlasStore.sessions.filter(s => s.id !== atlasStore.activeSessionId)
+)
 </script>
 
 <template>
@@ -94,7 +99,7 @@ function onOpenSubMap(type: SubMapType) {
   <!-- Session view -->
   <div v-else-if="view === 'session'" :class="$style.appLayout">
     <header :class="$style.appHeader">
-      <span :class="$style.headerSessionName">{{ sessionName || 'Session' }}</span>
+      <span :class="$style.headerSessionName">{{ atlasStore.activeSession?.name || 'Session' }}</span>
       <div :class="$style.headerActions">
         <button :class="$style.headerBtn" @click="toggleDemoPanel">
           {{ selectedLocation ? 'Close panel' : 'Demo panel' }}
@@ -189,7 +194,21 @@ function onOpenSubMap(type: SubMapType) {
       <h2 :class="$style.simpleTitle">Previous Sessions</h2>
     </header>
     <div :class="$style.sessionList">
-      <p :class="$style.emptyState">No previous sessions.</p>
+      <p v-if="pastSessions.length === 0" :class="$style.emptyState">No previous sessions.</p>
+      <ul v-else :class="$style.sessionItems">
+        <li
+          v-for="s in pastSessions"
+          :key="s.id"
+          :class="$style.sessionItem"
+        >
+          <span :class="$style.sessionItemName">{{ s.name }}</span>
+          <span :class="$style.sessionItemMeta">
+            Started at <span :class="$style.sessionItemId">{{ s.startingLocationId }}</span>
+            &middot;
+            {{ new Date(s.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }}
+          </span>
+        </li>
+      </ul>
     </div>
   </div>
 </template>
@@ -410,5 +429,43 @@ function onOpenSubMap(type: SubMapType) {
   color: var(--color-text-dim);
   font-size: 14px;
   margin: 0;
+}
+
+.sessionItems {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sessionItem {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 5px;
+  background: var(--color-map-surface);
+  border: 1px solid var(--color-border);
+}
+
+.sessionItemName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.sessionItemMeta {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.sessionItemId {
+  font-family: var(--font-id);
+  font-size: 13px;
+  color: var(--color-text);
 }
 </style>

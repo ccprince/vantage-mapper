@@ -58,6 +58,7 @@ export const useAtlasStore = defineStore('atlas', {
         id: 'demo-session',
         name: 'Demo Session',
         startedAt: new Date().toISOString(),
+        startingLocationId: '041',
         currentLocationId: '042',
         displayCenter: '042',
         floatingRoots: [],
@@ -72,5 +73,20 @@ export const useAtlasStore = defineStore('atlas', {
   getters: {
     activeSession: (state): GameSession | undefined =>
       state.sessions.find(s => s.id === state.activeSessionId),
+  },
+
+  actions: {
+    addLocation(id: LocationId): Location {
+      const loc: Location = {
+        id,
+        exits: { north: null, south: null, east: null, west: null },
+        hasInterior: false,
+        hasAerial: false,
+        hasUnderground: false,
+        notes: '',
+      }
+      this.locations[id] = loc
+      return loc
+    },
   },
 })

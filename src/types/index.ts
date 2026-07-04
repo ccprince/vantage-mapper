@@ -36,6 +36,7 @@ export interface GameSession {
   id: string
   name: string
   startedAt: string
+  startingLocationId: LocationId
   currentLocationId: LocationId
   displayCenter: LocationId
   floatingRoots: LocationId[]

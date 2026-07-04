@@ -7,8 +7,8 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
-const today = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD
-const name = ref(today)
+const defaultName = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+const name = ref(defaultName)
 const startingId = ref('')
 const attemptedSubmit = ref(false)
 
