@@ -192,7 +192,7 @@ function onReviewCenterMap(id: LocationId) {
             :in-session="true"
             :is-current-location="atlasStore.activeSession?.currentLocationId === selectedLocation.id"
             :action-taken="isActionTaken(selectedLocation.id)"
-            @close="selectedLocation = null"
+            @close="selectedLocation = null; uiStore.selectedLocationId = null"
             @go="onGo"
             @center-map="onCenterMap"
             @teleport="onTeleport"
@@ -237,7 +237,7 @@ function onReviewCenterMap(id: LocationId) {
           <LocationDetail
             :location="selectedLocation"
             :in-session="false"
-            @close="selectedLocation = null"
+            @close="selectedLocation = null; uiStore.selectedLocationId = null"
             @center-map="onAtlasCenterMap"
             @open-sub-map="onOpenSubMap"
           />
@@ -282,7 +282,7 @@ function onReviewCenterMap(id: LocationId) {
           <LocationDetail
             :location="selectedLocation"
             :in-session="false"
-            @close="selectedLocation = null"
+            @close="selectedLocation = null; uiStore.selectedLocationId = null"
             @center-map="onReviewCenterMap"
             @open-sub-map="onOpenSubMap"
           />
