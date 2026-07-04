@@ -157,7 +157,6 @@ function onSubMapGo(id: LocationId) {
   if (!loc) return
   atlasStore.goToSubMapLocation(subMapId, id)
   selectedSubMapLocation.value = loc
-  subMapDisplayCenter.value = id
   uiStore.selectedLocationId = id
 }
 
