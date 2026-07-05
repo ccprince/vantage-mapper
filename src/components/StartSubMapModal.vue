@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue'
 import type { LocationId, SubMapType } from '../types'
 
-const props = defineProps<{
+defineProps<{
   type: SubMapType
   parentLocationId: LocationId
 }>()

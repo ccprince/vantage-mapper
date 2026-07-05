@@ -103,22 +103,6 @@ function onExitKindChange(dir: Direction) {
   exitDraftTouched.value[dir] = false
 }
 
-// --- Exit display ---
-
-function exitDescription(exit: Exit): string {
-  if (exit === null) return 'Unknown'
-  if (exit.kind === 'location') return `→ ${exit.id}`
-  if (exit.kind === 'departure') return exit.id != null ? `Departure → ${exit.id}` : 'Departure'
-  return 'Blocked'
-}
-
-function exitStyleClass(exit: Exit): string {
-  if (exit === null) return $style.exitUnknown
-  if (exit.kind === 'location') return $style.exitLocation
-  if (exit.kind === 'departure') return $style.exitDeparture
-  return $style.exitBlocked
-}
-
 function exitDestination(exit: Exit): LocationId | null {
   if (!exit) return null
   if (exit.kind === 'location') return exit.id
