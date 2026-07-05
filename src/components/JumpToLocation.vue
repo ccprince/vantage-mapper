@@ -43,6 +43,7 @@ function handleKeydown(e: KeyboardEvent) {
           placeholder="042"
           spellcheck="false"
           autocomplete="off"
+          inputmode="numeric"
           @keydown="handleKeydown"
           autofocus
         />

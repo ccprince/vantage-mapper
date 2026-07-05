@@ -201,6 +201,7 @@ function saveNotes() {
               :disabled="exitDrafts[dir].kind === 'blocked'"
               spellcheck="false"
               autocomplete="off"
+              inputmode="numeric"
               @blur="exitDraftTouched[dir] = true"
             />
           </div>

@@ -71,6 +71,7 @@ function handleKeydown(e: KeyboardEvent) {
             placeholder="042"
             spellcheck="false"
             autocomplete="off"
+            inputmode="numeric"
           />
           <p v-if="idError" :class="$style.fieldError">{{ idError }}</p>
           <p :class="$style.fieldHint">This becomes your current location and map center.</p>
