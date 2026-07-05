@@ -11,6 +11,7 @@ import { useAtlasStore } from './stores/atlas'
 import { useSessionStore } from './stores/session'
 import { useUiStore } from './stores/ui'
 import { downloadAtlas, parseBackup, CURRENT_VERSION } from './utils/storage'
+import { appVersion } from './utils/version'
 
 const atlasStore = useAtlasStore()
 const sessionStore = useSessionStore()
@@ -384,6 +385,8 @@ const LAYER_LABELS: Record<LayerType, string> = {
       />
     </nav>
 
+    <p :class="$style.versionInfo">v{{ appVersion }} &middot; schema {{ CURRENT_VERSION }}</p>
+
     <SessionManager
       v-if="showSessionManager"
       @submit="onSessionSubmit"
@@ -748,6 +751,13 @@ const LAYER_LABELS: Record<LayerType, string> = {
 
 .hiddenInput {
   display: none;
+}
+
+.versionInfo {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-text-dim);
+  letter-spacing: 0.04em;
 }
 
 /* --- Shared session/atlas layout --- */
