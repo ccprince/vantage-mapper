@@ -5,6 +5,7 @@ import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  base: '/vantage-mapper/',
   plugins: [
     vue(),
     VitePWA({
