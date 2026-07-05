@@ -3,6 +3,29 @@ import type { PersistentAtlas } from '../types'
 const STORAGE_KEY = 'vantage-atlas'
 export const CURRENT_VERSION = 3
 
+export function downloadAtlas(atlas: PersistentAtlas): void {
+  const date = new Date().toISOString().slice(0, 10)
+  const blob = new Blob([JSON.stringify(atlas, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `vantage-atlas-${date}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export function parseBackup(raw: string): PersistentAtlas | null {
+  try {
+    const parsed = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null) return null
+    if (typeof parsed.version !== 'number') return null
+    if (typeof parsed.locations !== 'object') return null
+    return migrate(parsed as PersistentAtlas)
+  } catch {
+    return null
+  }
+}
+
 export function loadAtlas(): PersistentAtlas | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)

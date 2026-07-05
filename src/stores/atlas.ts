@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
-import type { Direction, Exit, GameSession, Location, LocationId, SubMap, SubMapLocation, SubMapType } from '../types'
-import { loadAtlas } from '../utils/storage'
+import type { Direction, Exit, GameSession, Location, LocationId, PersistentAtlas, SubMap, SubMapLocation, SubMapType } from '../types'
+import { loadAtlas, saveAtlas } from '../utils/storage'
 
 const OPPOSITE: Record<Direction, Direction> = {
   north: 'south', south: 'north', east: 'west', west: 'east',
@@ -145,6 +145,14 @@ export const useAtlasStore = defineStore('atlas', {
       const subMap = this.subMaps[subMapId]
       if (!subMap) return
       subMap.actionTaken[locationId] = !subMap.actionTaken[locationId]
+    },
+
+    restoreFromBackup(atlas: PersistentAtlas) {
+      this.locations = atlas.locations ?? {}
+      this.subMaps = atlas.subMaps ?? {}
+      this.sessions = atlas.sessions ?? []
+      this.activeSessionId = atlas.activeSessionId ?? null
+      saveAtlas(atlas)
     },
   },
 })

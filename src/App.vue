@@ -10,6 +10,7 @@ import JumpToLocation from './components/JumpToLocation.vue'
 import { useAtlasStore } from './stores/atlas'
 import { useSessionStore } from './stores/session'
 import { useUiStore } from './stores/ui'
+import { downloadAtlas, parseBackup, CURRENT_VERSION } from './utils/storage'
 
 const atlasStore = useAtlasStore()
 const sessionStore = useSessionStore()
@@ -28,6 +29,8 @@ const subMapDisplayCenter = ref<LocationId | undefined>(undefined)
 const pendingSubMap = ref<{ type: SubMapType; parentLocationId: LocationId } | null>(null)
 const reviewedSession = ref<GameSession | null>(null)
 const reviewedSessionCenter = ref<LocationId | null>(null)
+const restoreError = ref('')
+const restoreFileInput = ref<HTMLInputElement | null>(null)
 
 function openNewSession() {
   showSessionManager.value = true
@@ -181,6 +184,43 @@ const pastSessions = computed(() =>
   atlasStore.sessions.filter(s => s.id !== atlasStore.activeSessionId)
 )
 
+function downloadBackup() {
+  const atlas = {
+    version: CURRENT_VERSION,
+    locations: atlasStore.locations,
+    subMaps: atlasStore.subMaps,
+    sessions: atlasStore.sessions,
+    activeSessionId: atlasStore.activeSessionId,
+  }
+  downloadAtlas(atlas)
+}
+
+function triggerRestoreFile() {
+  restoreError.value = ''
+  restoreFileInput.value?.click()
+}
+
+function onRestoreFileSelected(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = () => {
+    const text = reader.result as string
+    const parsed = parseBackup(text)
+    if (!parsed) {
+      restoreError.value = 'Invalid backup file.'
+      return
+    }
+    if (!confirm('Replace all local atlas data with this backup? This cannot be undone.')) return
+    atlasStore.restoreFromBackup(parsed)
+    view.value = 'home'
+    selectedLocation.value = null
+    restoreError.value = ''
+  }
+  reader.readAsText(file)
+  ;(e.target as HTMLInputElement).value = ''
+}
+
 function openPreviousSession(session: GameSession) {
   reviewedSession.value = session
   reviewedSessionCenter.value = session.displayCenter
@@ -218,6 +258,21 @@ function onReviewCenterMap(id: LocationId) {
       <button :class="[$style.navBtn, $style.navBtnSecondary]" @click="view = 'prev-sessions'">
         Previous Sessions
       </button>
+      <div :class="$style.navDivider" />
+      <button :class="[$style.navBtn, $style.navBtnSecondary]" @click="downloadBackup">
+        Backup Atlas
+      </button>
+      <button :class="[$style.navBtn, $style.navBtnSecondary]" @click="triggerRestoreFile">
+        Restore Atlas
+      </button>
+      <p v-if="restoreError" :class="$style.restoreError">{{ restoreError }}</p>
+      <input
+        ref="restoreFileInput"
+        type="file"
+        accept=".json,application/json"
+        :class="$style.hiddenInput"
+        @change="onRestoreFileSelected"
+      />
     </nav>
 
     <SessionManager
@@ -536,6 +591,17 @@ function onReviewCenterMap(id: LocationId) {
 .navBtnSecondary:hover {
   border-color: var(--color-text-muted);
   color: var(--color-text);
+}
+
+.restoreError {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-error);
+  text-align: center;
+}
+
+.hiddenInput {
+  display: none;
 }
 
 /* --- Shared session/atlas layout --- */
