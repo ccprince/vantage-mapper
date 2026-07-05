@@ -122,15 +122,20 @@ function saveNotes() {
 
 // --- Connections ---
 
-function toggleInterior() {
-  atlasStore.setInteriorFlag(props.location.id, !props.location.hasInterior)
-}
-
+const interiorEntryDraft = ref(props.location.interiorEntryId ?? '')
 const aerialEntryDraft = ref(props.location.aerialEntryId ?? '')
 const undergroundEntryDraft = ref(props.location.undergroundEntryId ?? '')
 
+watch(() => props.location.interiorEntryId, v => { interiorEntryDraft.value = v ?? '' })
 watch(() => props.location.aerialEntryId, v => { aerialEntryDraft.value = v ?? '' })
 watch(() => props.location.undergroundEntryId, v => { undergroundEntryDraft.value = v ?? '' })
+
+function saveInteriorEntry(draft: string) {
+  const id = draft.trim()
+  if (id === '' || /^\d{3}$/.test(id)) {
+    atlasStore.setInteriorEntry(props.location.id, id || null)
+  }
+}
 
 function saveLayerEntry(layer: 'aerial' | 'underground', draft: string) {
   const id = draft.trim()
@@ -254,15 +259,23 @@ function onActionTaken() {
         <div :class="$style.subMapRows">
           <!-- Interior sub-map -->
           <div :class="$style.subMapRow">
+            <span :class="$style.layerEntryLabel">Interior</span>
+            <input
+              :class="[$style.layerEntryInput, interiorEntryDraft && !/^\d{3}$/.test(interiorEntryDraft) && $style.layerEntryInputError]"
+              v-model="interiorEntryDraft"
+              type="text"
+              maxlength="3"
+              placeholder="—"
+              spellcheck="false"
+              autocomplete="off"
+              inputmode="numeric"
+              @blur="saveInteriorEntry(interiorEntryDraft)"
+            />
             <button
-              :class="[$style.subMapToggle, location.hasInterior && $style.subMapToggleActive]"
-              @click="toggleInterior"
-            >Interior</button>
-            <button
-              v-if="location.hasInterior"
+              v-if="location.interiorEntryId"
               :class="$style.subMapOpenBtn"
               @click="emit('openSubMap')"
-            >Open</button>
+            >Go</button>
           </div>
           <!-- Aerial layer entry -->
           <div :class="$style.subMapRow">
@@ -637,31 +650,6 @@ function onActionTaken() {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.subMapToggle {
-  background: var(--color-cell-unknown);
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  color: var(--color-text-muted);
-  font-size: 13px;
-  padding: 5px 12px;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-  min-width: 96px;
-  text-align: left;
-}
-.subMapToggle:hover {
-  border-color: var(--color-text-muted);
-  color: var(--color-text);
-}
-.subMapToggleActive {
-  border-color: var(--color-cell-visited);
-  color: var(--color-cell-visited);
-  background: rgba(91, 143, 168, 0.1);
-}
-.subMapToggleActive:hover {
-  border-color: var(--color-cell-visited);
-  color: var(--color-cell-visited);
 }
 
 .subMapOpenBtn {

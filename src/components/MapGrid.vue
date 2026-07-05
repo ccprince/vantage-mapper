@@ -335,7 +335,7 @@ onBeforeUnmount(clearLongPress)
         >{{ id }}</text>
         <!-- Interior sub-map indicator (lower-left) -->
         <text
-          v-if="isMainMapLocation(locationMap[id]) && (locationMap[id] as Location).hasInterior"
+          v-if="isMainMapLocation(locationMap[id]) && (locationMap[id] as Location).interiorEntryId !== null"
           :x="cellLeft(dx) + 3"
           :y="cellTop(dy) + CELL - 2"
           :class="$style.cellFlag"

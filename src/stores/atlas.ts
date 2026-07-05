@@ -29,7 +29,7 @@ export const useAtlasStore = defineStore('atlas', {
       const loc: Location = {
         id,
         exits: { north: null, south: null, east: null, west: null },
-        hasInterior: false,
+        interiorEntryId: null,
         aerialEntryId: null,
         undergroundEntryId: null,
         notes: '',
@@ -105,10 +105,14 @@ export const useAtlasStore = defineStore('atlas', {
       if (loc) loc.notes = notes
     },
 
-    setInteriorFlag(locationId: LocationId, value: boolean) {
+    setInteriorEntry(locationId: LocationId, entryId: LocationId | null) {
       const loc = this.locations[locationId]
       if (!loc) return
-      loc.hasInterior = value
+      loc.interiorEntryId = entryId
+      if (entryId) {
+        const subMapId = `${locationId}-interior`
+        if (!(subMapId in this.subMaps)) this.createSubMap(locationId, 'interior', entryId)
+      }
     },
 
     setLayerEntry(locationId: LocationId, layer: 'aerial' | 'underground', entryId: LocationId | null) {

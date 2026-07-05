@@ -1,7 +1,7 @@
 import type { LayerType, PersistentAtlas } from '../types'
 
 const STORAGE_KEY = 'vantage-atlas'
-export const CURRENT_VERSION = 4
+export const CURRENT_VERSION = 5
 
 export function downloadAtlas(atlas: PersistentAtlas): void {
   const date = new Date().toISOString().slice(0, 10)
@@ -121,6 +121,20 @@ function migrate(atlas: PersistentAtlas): PersistentAtlas {
         if (!(layer in session.displayCenters)) session.displayCenters[layer] = null
         if (!(layer in session.floatingRoots)) session.floatingRoots[layer] = []
       }
+    }
+  }
+
+  if ((a.version ?? 0) < 5) {
+    // Replace hasInterior with interiorEntryId on surface locations
+    for (const loc of Object.values(a.locations ?? {})) {
+      const l = loc as any
+      if (!('interiorEntryId' in l)) {
+        const subMapId = `${l.id}-interior`
+        const subMap = (a.subMaps ?? {})[subMapId] as any
+        const firstId = subMap ? Object.keys(subMap.locations ?? {})[0] ?? null : null
+        l.interiorEntryId = l.hasInterior ? firstId : null
+      }
+      delete l.hasInterior
     }
   }
 

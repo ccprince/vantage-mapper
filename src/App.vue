@@ -6,7 +6,6 @@ import LocationDetail from './components/LocationDetail.vue'
 import LayerLocationDetail from './components/LayerLocationDetail.vue'
 import SubMapLocationDetail from './components/SubMapLocationDetail.vue'
 import MapGrid from './components/MapGrid.vue'
-import StartSubMapModal from './components/StartSubMapModal.vue'
 import JumpToLocation from './components/JumpToLocation.vue'
 import { useAtlasStore } from './stores/atlas'
 import { useSessionStore } from './stores/session'
@@ -32,7 +31,6 @@ const selectedLayerLocation = ref<LayerLocation | null>(null)
 const activeSubMap = ref<{ parentLocationId: LocationId } | null>(null)
 const selectedSubMapLocation = ref<LayerLocation | null>(null)
 const subMapDisplayCenter = ref<LocationId | undefined>(undefined)
-const pendingSubMap = ref<LocationId | null>(null)  // parentLocationId awaiting interior start
 
 const reviewedSession = ref<GameSession | null>(null)
 const reviewedSessionDisplayCenters = ref<Record<LayerType, LocationId | null>>({
@@ -195,34 +193,16 @@ function onGoToLayer(layer: 'aerial' | 'underground') {
 function onOpenSubMap() {
   if (!selectedLocation.value) return
   const parentLocationId = selectedLocation.value.id
-  const subMapId = `${parentLocationId}-interior`
-  if (atlasStore.subMaps[subMapId]) {
-    const ids = Object.keys(atlasStore.subMaps[subMapId].locations)
-    subMapDisplayCenter.value = ids[0]
-    selectedSubMapLocation.value = null
-    uiStore.selectedLocationId = null
-    activeSubMap.value = { parentLocationId }
-  } else {
-    pendingSubMap.value = parentLocationId
-  }
-}
-
-function onStartSubMap(startingLocationId: LocationId) {
-  if (!pendingSubMap.value) return
-  const parentLocationId = pendingSubMap.value
-  atlasStore.createSubMap(parentLocationId, 'interior', startingLocationId)
-  pendingSubMap.value = null
-  subMapDisplayCenter.value = startingLocationId
+  const entryId = selectedLocation.value.interiorEntryId
+  if (!entryId) return
+  subMapDisplayCenter.value = entryId
   selectedSubMapLocation.value = null
   uiStore.selectedLocationId = null
   activeSubMap.value = { parentLocationId }
-
   const session = atlasStore.activeSession
   if (session) {
-    session.currentLocationId = startingLocationId
-    if (!session.visitedLocations.includes(startingLocationId)) {
-      session.visitedLocations.push(startingLocationId)
-    }
+    session.currentLocationId = entryId
+    if (!session.visitedLocations.includes(entryId)) session.visitedLocations.push(entryId)
   }
 }
 
@@ -515,12 +495,6 @@ const LAYER_LABELS: Record<LayerType, string> = {
     </nav>
 
     <JumpToLocation v-if="showJumpTo" @close="showJumpTo = false" @navigate="onJumpTo" />
-    <StartSubMapModal
-      v-if="pendingSubMap"
-      :parent-location-id="pendingSubMap"
-      @submit="onStartSubMap"
-      @cancel="pendingSubMap = null"
-    />
   </div>
 
   <!-- Atlas view -->
@@ -577,12 +551,6 @@ const LAYER_LABELS: Record<LayerType, string> = {
       >{{ LAYER_LABELS[layer] }}</button>
     </nav>
 
-    <StartSubMapModal
-      v-if="pendingSubMap"
-      :parent-location-id="pendingSubMap"
-      @submit="onStartSubMap"
-      @cancel="pendingSubMap = null"
-    />
   </div>
 
   <!-- Previous session map view -->

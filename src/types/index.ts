@@ -16,7 +16,7 @@ export type SubMapType = 'interior'
 export interface Location {
   id: LocationId
   exits: Record<Direction, Exit>
-  hasInterior: boolean
+  interiorEntryId: LocationId | null
   aerialEntryId: LocationId | null
   undergroundEntryId: LocationId | null
   notes: string
