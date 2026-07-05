@@ -1,20 +1,22 @@
 <script setup lang="ts">
 import { ref, computed, watch, useCssModule } from 'vue'
-import type { SubMapLocation, LocationId, Direction, Exit } from '../types'
+import type { LayerLocation, LocationId, Direction, Exit } from '../types'
 import { useAtlasStore } from '../stores/atlas'
 import { useSessionStore } from '../stores/session'
 
 const props = defineProps<{
-  location: SubMapLocation
-  subMapId: string
+  location: LayerLocation
+  layer: 'aerial' | 'underground'
   actionTaken?: boolean
   isCurrentLocation?: boolean
+  inSession?: boolean
 }>()
 
 const emit = defineEmits<{
   close: []
   go: [locationId: LocationId]
   centerMap: [locationId: LocationId]
+  jump: [locationId: LocationId]
 }>()
 
 const atlasStore = useAtlasStore()
@@ -90,7 +92,7 @@ function saveEditExits() {
     if (kind === 'location') exit = { kind: 'location', id }
     else if (kind === 'departure') exit = { kind: 'departure', id: id || null }
     else exit = { kind: 'blocked' }
-    atlasStore.setSubMapExit(props.subMapId, props.location.id, dir, exit)
+    atlasStore.setLayerExit(props.layer, props.location.id, dir, exit)
   }
   editingExits.value = false
 }
@@ -100,19 +102,11 @@ function onExitKindChange(dir: Direction) {
   exitDraftTouched.value[dir] = false
 }
 
-// --- Exit display ---
-
 function exitDestination(exit: Exit): LocationId | null {
   if (!exit) return null
   if (exit.kind === 'location') return exit.id
   if (exit.kind === 'departure' && exit.id) return exit.id
   return null
-}
-
-// --- Action taken ---
-
-function onActionTaken() {
-  sessionStore.toggleActionTaken(props.location.id)
 }
 
 // --- Notes ---
@@ -121,7 +115,13 @@ const notesDraft = ref(props.location.notes)
 watch(() => props.location.notes, (v) => { notesDraft.value = v })
 
 function saveNotes() {
-  atlasStore.setSubMapNotes(props.subMapId, props.location.id, notesDraft.value)
+  atlasStore.setLayerNotes(props.layer, props.location.id, notesDraft.value)
+}
+
+// --- Action taken ---
+
+function onActionTaken() {
+  sessionStore.toggleActionTaken(props.location.id)
 }
 </script>
 
@@ -137,7 +137,7 @@ function saveNotes() {
 
     <div :class="$style.body">
       <!-- Action taken -->
-      <div :class="$style.sessionRow">
+      <div v-if="inSession" :class="$style.sessionRow">
         <label :class="[$style.checkboxLabel, $style.checkboxLabelClickable]">
           <input
             type="checkbox"
@@ -158,7 +158,6 @@ function saveNotes() {
           <button v-if="!editingExits" :class="$style.sectionEditBtn" @click="startEditExits">Edit</button>
         </div>
 
-        <!-- Compass display -->
         <div v-if="!editingExits" :class="$style.compassGrid">
           <div
             v-for="dir in DIRECTIONS"
@@ -167,13 +166,16 @@ function saveNotes() {
             :style="{ gridRow: DIR_GRID_ROW[dir], gridColumn: DIR_GRID_COL[dir] }"
           >
             <button
-              v-if="exitDestination(location.exits[dir])"
+              v-if="inSession && exitDestination(location.exits[dir])"
               :class="$style.goBtn"
               @click="emit('go', exitDestination(location.exits[dir])!)"
             >
               <span :class="$style.compassDestId">{{ exitDestination(location.exits[dir]) }}</span>
               <span>Go</span>
             </button>
+            <span v-else-if="exitDestination(location.exits[dir])" :class="$style.compassDestId">
+              {{ exitDestination(location.exits[dir]) }}
+            </span>
             <span v-else :class="$style.compassDirLabel">{{ DIR_LABEL[dir] }}</span>
           </div>
         </div>
@@ -239,6 +241,11 @@ function saveNotes() {
       <button :class="[$style.btn, $style.btnGhost]" @click="emit('centerMap', location.id)">
         Center map here
       </button>
+      <button
+        v-if="inSession"
+        :class="[$style.btn, $style.btnPrimary]"
+        @click="emit('jump', location.id)"
+      >Jump here</button>
     </footer>
   </div>
 </template>
@@ -268,6 +275,14 @@ function saveNotes() {
   gap: 10px;
 }
 
+.locationId {
+  font-family: var(--font-id);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--color-text);
+}
+
 .currentBadge {
   font-size: 11px;
   font-weight: 600;
@@ -278,14 +293,6 @@ function saveNotes() {
   border: 1px solid rgba(91, 143, 168, 0.3);
   border-radius: 3px;
   padding: 2px 6px;
-}
-
-.locationId {
-  font-family: var(--font-id);
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--color-text);
 }
 
 .closeBtn {
@@ -376,7 +383,6 @@ function saveNotes() {
   color: var(--color-text);
 }
 
-/* Exits — compass display */
 .compassGrid {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
@@ -412,6 +418,15 @@ function saveNotes() {
   letter-spacing: 0.08em;
 }
 
+.dirLabel {
+  font-family: var(--font-id);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  width: 18px;
+  flex-shrink: 0;
+}
+
 .goBtn {
   display: flex;
   flex-direction: column;
@@ -429,16 +444,6 @@ function saveNotes() {
 .goBtn:hover {
   border-color: var(--color-cell-visited);
   background: rgba(91, 143, 168, 0.08);
-}
-
-/* Edit form dir label */
-.dirLabel {
-  font-family: var(--font-id);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  width: 18px;
-  flex-shrink: 0;
 }
 
 .exitEditorAll {

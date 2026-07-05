@@ -1,7 +1,7 @@
-import type { PersistentAtlas } from '../types'
+import type { LayerType, PersistentAtlas } from '../types'
 
 const STORAGE_KEY = 'vantage-atlas'
-export const CURRENT_VERSION = 3
+export const CURRENT_VERSION = 4
 
 export function downloadAtlas(atlas: PersistentAtlas): void {
   const date = new Date().toISOString().slice(0, 10)
@@ -46,25 +46,83 @@ export function saveAtlas(atlas: PersistentAtlas): void {
 }
 
 function migrate(atlas: PersistentAtlas): PersistentAtlas {
-  if ((atlas.version ?? 0) < 2) {
-    // Add currentLocationId and visitedLocations to existing sub-maps.
-    for (const subMap of Object.values(atlas.subMaps ?? {})) {
+  const a = atlas as any
+
+  if ((a.version ?? 0) < 2) {
+    for (const subMap of Object.values(a.subMaps ?? {})) {
       const sm = subMap as any
       if (!sm.currentLocationId) {
-        const firstId = Object.keys(sm.locations ?? {})[0] ?? ''
-        sm.currentLocationId = firstId
+        sm.currentLocationId = Object.keys(sm.locations ?? {})[0] ?? ''
       }
       if (!sm.visitedLocations) {
         sm.visitedLocations = sm.currentLocationId ? [sm.currentLocationId] : []
       }
     }
   }
-  if ((atlas.version ?? 0) < 3) {
-    // Add actionTaken to existing sub-maps.
-    for (const subMap of Object.values(atlas.subMaps ?? {})) {
+
+  if ((a.version ?? 0) < 3) {
+    for (const subMap of Object.values(a.subMaps ?? {})) {
       const sm = subMap as any
       if (!sm.actionTaken) sm.actionTaken = {}
     }
   }
-  return { ...atlas, version: CURRENT_VERSION }
+
+  if ((a.version ?? 0) < 4) {
+    // Replace hasAerial/hasUnderground with aerialEntryId/undergroundEntryId on surface locations
+    for (const loc of Object.values(a.locations ?? {})) {
+      const l = loc as any
+      delete l.hasAerial
+      delete l.hasUnderground
+      if (!('aerialEntryId' in l)) l.aerialEntryId = null
+      if (!('undergroundEntryId' in l)) l.undergroundEntryId = null
+    }
+
+    // Remove aerial and underground sub-maps; keep only interior
+    const subMaps = a.subMaps ?? {}
+    for (const key of Object.keys(subMaps)) {
+      const sm = subMaps[key] as any
+      if (sm.type === 'aerial' || sm.type === 'underground') {
+        delete subMaps[key]
+      }
+    }
+
+    // Strip session-state fields from remaining (interior) sub-maps
+    for (const subMap of Object.values(subMaps)) {
+      const sm = subMap as any
+      delete sm.currentLocationId
+      delete sm.visitedLocations
+      delete sm.actionTaken
+    }
+
+    // Initialize new top-level layer collections
+    if (!a.aerialLocations) a.aerialLocations = {}
+    if (!a.undergroundLocations) a.undergroundLocations = {}
+
+    // Migrate each session: displayCenter → displayCenters, floatingRoots array → per-layer object
+    const LAYERS: LayerType[] = ['surface', 'aerial', 'underground']
+    for (const session of (a.sessions ?? []) as any[]) {
+      if (!session.displayCenters) {
+        session.displayCenters = {
+          surface: session.displayCenter ?? null,
+          aerial: null,
+          underground: null,
+        }
+        delete session.displayCenter
+      }
+      if (!session.floatingRoots || Array.isArray(session.floatingRoots)) {
+        session.floatingRoots = {
+          surface: Array.isArray(session.floatingRoots) ? session.floatingRoots : [],
+          aerial: [],
+          underground: [],
+        }
+      }
+      // Ensure all three layer keys exist
+      for (const layer of LAYERS) {
+        if (!(layer in session.displayCenters)) session.displayCenters[layer] = null
+        if (!(layer in session.floatingRoots)) session.floatingRoots[layer] = []
+      }
+    }
+  }
+
+  return { ...a, version: CURRENT_VERSION }
 }

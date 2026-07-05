@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import type { LocationId, SubMapType } from '../types'
+import type { LocationId } from '../types'
 
 defineProps<{
-  type: SubMapType
   parentLocationId: LocationId
 }>()
 
@@ -11,12 +10,6 @@ const emit = defineEmits<{
   submit: [startingLocationId: LocationId]
   cancel: []
 }>()
-
-const TYPE_LABEL: Record<SubMapType, string> = {
-  interior: 'Interior',
-  aerial: 'Aerial',
-  underground: 'Underground',
-}
 
 const input = ref('')
 const submitted = ref(false)
@@ -39,12 +32,10 @@ function handleKeydown(e: KeyboardEvent) {
   <div :class="$style.backdrop" @click.self="emit('cancel')">
     <div :class="$style.widget">
       <div :class="$style.header">
-        <span :class="$style.label">
-          {{ TYPE_LABEL[type] }} starting location
-        </span>
+        <span :class="$style.label">Interior starting location</span>
         <button :class="$style.closeBtn" @click="emit('cancel')" aria-label="Cancel">×</button>
       </div>
-      <p :class="$style.hint">Enter the ID of the first location inside {{ parentLocationId }}'s {{ TYPE_LABEL[type].toLowerCase() }}.</p>
+      <p :class="$style.hint">Enter the ID of the first location inside {{ parentLocationId }}'s interior.</p>
       <div :class="$style.inputRow">
         <input
           :class="[$style.idInput, showError && $style.idInputError]"

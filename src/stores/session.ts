@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { LocationId } from '../types'
+import type { LayerType, LocationId } from '../types'
 import { useAtlasStore } from './atlas'
 
 export const useSessionStore = defineStore('session', {
@@ -14,9 +14,7 @@ export const useSessionStore = defineStore('session', {
       const atlasStore = useAtlasStore()
 
       const isNew = !(startingLocationId in atlasStore.locations)
-      if (isNew) {
-        atlasStore.addLocation(startingLocationId)
-      }
+      if (isNew) atlasStore.addLocation(startingLocationId)
 
       const now = new Date().toISOString()
       const session = {
@@ -25,8 +23,16 @@ export const useSessionStore = defineStore('session', {
         startedAt: now,
         startingLocationId,
         currentLocationId: startingLocationId,
-        displayCenter: startingLocationId,
-        floatingRoots: isNew ? [startingLocationId] : [],
+        displayCenters: {
+          surface: startingLocationId,
+          aerial: null,
+          underground: null,
+        } as Record<LayerType, LocationId | null>,
+        floatingRoots: {
+          surface: isNew ? [startingLocationId] : [],
+          aerial: [],
+          underground: [],
+        } as Record<LayerType, LocationId[]>,
         visitedLocations: [startingLocationId],
         actionTaken: {} as Record<LocationId, boolean>,
       }

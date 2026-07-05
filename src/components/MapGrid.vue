@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount } from 'vue'
-import type { Direction, Exit, Location, LocationId, SubMapLocation } from '../types'
+import type { Direction, Exit, LayerLocation, Location, LocationId } from '../types'
 import { useAtlasStore } from '../stores/atlas'
 import { useUiStore } from '../stores/ui'
 import { computeLayout } from '../utils/layout'
 
-type AnyLocation = Location | SubMapLocation
+type AnyLocation = Location | LayerLocation
 
 const props = defineProps<{
   displayCenter?: LocationId
   readOnly?: boolean
-  subMapLocations?: Record<LocationId, SubMapLocation>
+  subMapLocations?: Record<LocationId, LayerLocation>
   sessionVisited?: LocationId[]
   sessionCurrentLocationId?: LocationId
   sessionActionTaken?: Record<LocationId, boolean>
@@ -58,9 +58,12 @@ const bgCells = computed(() => {
 })
 
 // ── Data sources ───────────────────────────────────────────────
-const locationMap = computed<Record<LocationId, AnyLocation>>(() =>
-  props.subMapLocations ?? atlasStore.locations
-)
+const locationMap = computed<Record<LocationId, AnyLocation>>(() => {
+  if (props.subMapLocations) return props.subMapLocations
+  if (uiStore.activeLayer === 'aerial') return atlasStore.aerialLocations
+  if (uiStore.activeLayer === 'underground') return atlasStore.undergroundLocations
+  return atlasStore.locations
+})
 
 const center = computed<LocationId | null>(() =>
   props.displayCenter ?? uiStore.displayCenter ?? null

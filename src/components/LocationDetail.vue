@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, useCssModule } from 'vue'
-import type { Location, LocationId, Direction, Exit, SubMapType } from '../types'
+import type { Location, LocationId, Direction, Exit } from '../types'
 import { useAtlasStore } from '../stores/atlas'
 import { useSessionStore } from '../stores/session'
 
@@ -16,7 +16,8 @@ const emit = defineEmits<{
   go: [locationId: LocationId]
   centerMap: [locationId: LocationId]
   jump: [locationId: LocationId]
-  openSubMap: [type: SubMapType]
+  openSubMap: []
+  goToLayer: [layer: 'aerial' | 'underground']
 }>()
 
 const atlasStore = useAtlasStore()
@@ -119,16 +120,23 @@ function saveNotes() {
   atlasStore.setNotes(props.location.id, notesDraft.value)
 }
 
-// --- Sub-maps ---
+// --- Connections ---
 
-const SUB_MAP_TYPES: { type: SubMapType; label: string; flag: 'hasInterior' | 'hasAerial' | 'hasUnderground' }[] = [
-  { type: 'interior', label: 'Interior', flag: 'hasInterior' },
-  { type: 'aerial', label: 'Aerial', flag: 'hasAerial' },
-  { type: 'underground', label: 'Underground', flag: 'hasUnderground' },
-]
+function toggleInterior() {
+  atlasStore.setInteriorFlag(props.location.id, !props.location.hasInterior)
+}
 
-function toggleSubMap(type: SubMapType, flag: 'hasInterior' | 'hasAerial' | 'hasUnderground') {
-  atlasStore.setSubMapFlag(props.location.id, type, !props.location[flag])
+const aerialEntryDraft = ref(props.location.aerialEntryId ?? '')
+const undergroundEntryDraft = ref(props.location.undergroundEntryId ?? '')
+
+watch(() => props.location.aerialEntryId, v => { aerialEntryDraft.value = v ?? '' })
+watch(() => props.location.undergroundEntryId, v => { undergroundEntryDraft.value = v ?? '' })
+
+function saveLayerEntry(layer: 'aerial' | 'underground', draft: string) {
+  const id = draft.trim()
+  if (id === '' || /^\d{3}$/.test(id)) {
+    atlasStore.setLayerEntry(props.location.id, layer, id || null)
+  }
 }
 
 // --- Action taken ---
@@ -240,20 +248,61 @@ function onActionTaken() {
         </div>
       </section>
 
-      <!-- Sub-maps -->
+      <!-- Connections -->
       <section :class="$style.section">
-        <h3 :class="$style.sectionTitle">Sub-maps</h3>
+        <h3 :class="$style.sectionTitle">Connections</h3>
         <div :class="$style.subMapRows">
-          <div v-for="sm in SUB_MAP_TYPES" :key="sm.type" :class="$style.subMapRow">
+          <!-- Interior sub-map -->
+          <div :class="$style.subMapRow">
             <button
-              :class="[$style.subMapToggle, location[sm.flag] && $style.subMapToggleActive]"
-              @click="toggleSubMap(sm.type, sm.flag)"
-            >{{ sm.label }}</button>
+              :class="[$style.subMapToggle, location.hasInterior && $style.subMapToggleActive]"
+              @click="toggleInterior"
+            >Interior</button>
             <button
-              v-if="location[sm.flag]"
+              v-if="location.hasInterior"
               :class="$style.subMapOpenBtn"
-              @click="emit('openSubMap', sm.type)"
+              @click="emit('openSubMap')"
             >Open</button>
+          </div>
+          <!-- Aerial layer entry -->
+          <div :class="$style.subMapRow">
+            <span :class="$style.layerEntryLabel">Aerial</span>
+            <input
+              :class="[$style.layerEntryInput, aerialEntryDraft && !/^\d{3}$/.test(aerialEntryDraft) && $style.layerEntryInputError]"
+              v-model="aerialEntryDraft"
+              type="text"
+              maxlength="3"
+              placeholder="—"
+              spellcheck="false"
+              autocomplete="off"
+              inputmode="numeric"
+              @blur="saveLayerEntry('aerial', aerialEntryDraft)"
+            />
+            <button
+              v-if="location.aerialEntryId"
+              :class="$style.subMapOpenBtn"
+              @click="emit('goToLayer', 'aerial')"
+            >Go</button>
+          </div>
+          <!-- Underground layer entry -->
+          <div :class="$style.subMapRow">
+            <span :class="$style.layerEntryLabel">Underground</span>
+            <input
+              :class="[$style.layerEntryInput, undergroundEntryDraft && !/^\d{3}$/.test(undergroundEntryDraft) && $style.layerEntryInputError]"
+              v-model="undergroundEntryDraft"
+              type="text"
+              maxlength="3"
+              placeholder="—"
+              spellcheck="false"
+              autocomplete="off"
+              inputmode="numeric"
+              @blur="saveLayerEntry('underground', undergroundEntryDraft)"
+            />
+            <button
+              v-if="location.undergroundEntryId"
+              :class="$style.subMapOpenBtn"
+              @click="emit('goToLayer', 'underground')"
+            >Go</button>
           </div>
         </div>
       </section>
@@ -627,6 +676,34 @@ function onActionTaken() {
 .subMapOpenBtn:hover {
   border-color: var(--color-text-muted);
   color: var(--color-text);
+}
+
+.layerEntryLabel {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  min-width: 96px;
+}
+
+.layerEntryInput {
+  background: var(--color-cell-unknown);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: var(--color-text);
+  font-family: var(--font-id);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  width: 58px;
+  flex-shrink: 0;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.layerEntryInput:focus {
+  border-color: var(--color-cell-visited);
+}
+.layerEntryInputError {
+  border-color: var(--color-error);
 }
 
 /* Notes */

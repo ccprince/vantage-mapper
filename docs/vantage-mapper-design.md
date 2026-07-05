@@ -48,62 +48,54 @@ type Exit =
 // A three-digit location identifier, e.g. "042"
 type LocationId = string;
 
-// A location in the main atlas. No coordinates are stored — position is
+// A location on the surface layer. No coordinates are stored — position is
 // derived at render time by traversing exit relationships from a center node.
 interface Location {
   id: LocationId;
   exits: Record<Direction, Exit>;
   hasInterior: boolean;
-  hasAerial: boolean;
-  hasUnderground: boolean;
+  aerialEntryId: LocationId | null;      // which aerial location this surface spot connects to
+  undergroundEntryId: LocationId | null; // which underground location this surface spot connects to
   notes: string;
-  discoveredInGame: GameId | null; // first session in which this location was recorded
 }
 
-// A sub-map (interior, aerial, or underground) anchored to a main-map location.
-// Sub-maps use the same Location structure but do not link to further sub-maps.
-type SubMapType = "interior" | "aerial" | "underground";
+// An interior sub-map anchored to a specific surface location.
+// Aerial and underground are full independent layers, not sub-maps.
+type SubMapType = "interior";
 
 interface SubMap {
   id: string; // e.g. "042-interior"
   parentId: LocationId;
   type: SubMapType;
-  locations: Record<LocationId, SubMapLocation>;
+  locations: Record<LocationId, LayerLocation>;
 }
 
-// A location within a sub-map. Same exit graph structure as a main Location,
-// but carries no sub-map link flags (sub-maps do not nest).
-interface SubMapLocation {
+// A location in the aerial or underground layer, or inside an interior sub-map.
+// Same exit graph structure as a surface Location but carries no layer-link flags.
+// Location IDs are globally unique — no ID can appear in more than one layer.
+interface LayerLocation {
   id: LocationId;
   exits: Record<Direction, Exit>;
   notes: string;
-  discoveredInGame: GameId | null;
 }
 
 // An identifier for a play session
 type GameId = string; // e.g. ISO timestamp of session start
 
-// Per-session state for one location
-interface SessionLocationState {
-  locationId: LocationId | string; // grid or sub-location id
-  visited: boolean;
-  actionTaken: boolean;
-}
-
 // A full play session
 interface GameSession {
   id: GameId;
   startedAt: string; // ISO 8601
-  label: string; // player-supplied name; defaults to the session start date
-  currentLocationId: LocationId; // the location the player is currently standing on
-  displayCenter: LocationId; // which location is centered on the map; set on session start and teleport;
-  // also updated via "Center map here"; persisted with session state
-  floatingRoots: LocationId[]; // roots of subgraphs not yet connected to the main atlas;
-  // starts with the session's starting location (if new to the atlas),
-  // grows when the player teleports to a new location,
-  // shrinks as subgraphs merge into the atlas or into each other
-  locationStates: Record<string, SessionLocationState>;
+  name: string; // player-supplied name; defaults to the session start date
+  startingLocationId: LocationId;
+  currentLocationId: LocationId; // single global current location across all layers
+  displayCenters: Record<LayerType, LocationId | null>; // per-layer display center
+  floatingRoots: Record<LayerType, LocationId[]>;       // per-layer disconnected subgraph roots
+  visitedLocations: LocationId[]; // flat and global — IDs are unique across all layers
+  actionTaken: Record<LocationId, boolean>;
 }
+
+type LayerType = "surface" | "aerial" | "underground";
 ```
 
 ### Persistence shape
@@ -113,7 +105,9 @@ All data lives under a single `localStorage` key (`vantage-atlas`) as a serializ
 ```typescript
 interface PersistentAtlas {
   version: number;
-  locations: Record<LocationId, Location>;
+  locations: Record<LocationId, Location>;         // surface layer
+  aerialLocations: Record<LocationId, LayerLocation>;
+  undergroundLocations: Record<LocationId, LayerLocation>;
   subMaps: Record<string, SubMap>; // keyed by SubMap.id, e.g. "042-interior"
   sessions: GameSession[];
   activeSessionId: GameId | null;
@@ -267,9 +261,13 @@ There is no manual panning. The display center changes only on teleport or when 
 
 ---
 
-### `<SubMapView>`
+### Layer tab bar
 
-Activated when a location with an interior, aerial, or underground link is open and the player taps one of those sub-map icons. Renders as a modal overlay containing a `<MapGrid>` instance bound to the sub-map's own location graph. The same display-center logic applies: if the player is currently inside the sub-map, their current sub-map location is centered; otherwise the sub-map's most recently visited location is used. Sub-map locations do not link to further sub-maps; their exits lead only to other sub-map locations or back to the main map. `<MapGrid>` is parameterised by a location collection and atlas context, and is reused identically for both the main map and all sub-maps.
+A persistent tab bar at the bottom of the map views (session, atlas, previous-session) lets the player switch between the three map layers: Surface, Aerial, and Underground. Each layer is an independent directed graph with its own BFS layout, its own display center, and its own floating roots. The player's actual position (`currentLocationId`) is a single global value — the ring marker appears only on the layer that contains it.
+
+### Interior sub-map view
+
+Activated when the player taps "Open" on the Interior connection in a surface location's detail panel. Replaces the main map with a full-screen view bound to that interior's location graph, with a breadcrumb header and a "← Back" button. Interior locations do not link to further sub-maps. `<MapGrid>` is parameterized by a location collection and reused identically for all views.
 
 ---
 
@@ -296,7 +294,10 @@ A panel (right sidebar or overlay) showing everything about the selected locatio
 
   All changes save immediately. For main-map locations, the field accepts any valid location ID; for sub-map locations, it accepts IDs within the same sub-map or the special value indicating a return to the main map.
 
-- **Sub-map links** (main-map locations only)**:** buttons to navigate to interior, aerial, or underground views; toggles to mark whether each exists
+- **Connections** (surface locations only):
+  - Interior: toggle to mark existence; "Open" button to enter the interior sub-map
+  - Aerial entry: 3-digit ID field recording which aerial location this surface spot connects to; "Go" button to switch to the aerial layer
+  - Underground entry: same for underground
 
 - **Session state:**
   - "Visited this game" checkbox (auto-checked on selection, but can be toggled)

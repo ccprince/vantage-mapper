@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { Direction, Exit, GameSession, Location, LocationId, PersistentAtlas, SubMap, SubMapLocation, SubMapType } from '../types'
+import type { Direction, Exit, GameSession, LayerLocation, Location, LocationId, PersistentAtlas, SubMap, SubMapLocation, SubMapType } from '../types'
 import { loadAtlas, saveAtlas } from '../utils/storage'
 
 const OPPOSITE: Record<Direction, Direction> = {
@@ -11,6 +11,8 @@ export const useAtlasStore = defineStore('atlas', {
     const saved = loadAtlas()
     return {
       locations: (saved?.locations ?? {}) as Record<LocationId, Location>,
+      aerialLocations: (saved?.aerialLocations ?? {}) as Record<LocationId, LayerLocation>,
+      undergroundLocations: (saved?.undergroundLocations ?? {}) as Record<LocationId, LayerLocation>,
       subMaps: (saved?.subMaps ?? {}) as Record<string, SubMap>,
       sessions: (saved?.sessions ?? []) as GameSession[],
       activeSessionId: (saved?.activeSessionId ?? null) as string | null,
@@ -28,11 +30,22 @@ export const useAtlasStore = defineStore('atlas', {
         id,
         exits: { north: null, south: null, east: null, west: null },
         hasInterior: false,
-        hasAerial: false,
-        hasUnderground: false,
+        aerialEntryId: null,
+        undergroundEntryId: null,
         notes: '',
       }
       this.locations[id] = loc
+      return loc
+    },
+
+    addLayerLocation(layer: 'aerial' | 'underground', id: LocationId): LayerLocation {
+      const loc: LayerLocation = {
+        id,
+        exits: { north: null, south: null, east: null, west: null },
+        notes: '',
+      }
+      if (layer === 'aerial') this.aerialLocations[id] = loc
+      else this.undergroundLocations[id] = loc
       return loc
     },
 
@@ -58,17 +71,55 @@ export const useAtlasStore = defineStore('atlas', {
       }
     },
 
+    setLayerExit(layer: 'aerial' | 'underground', locationId: LocationId, dir: Direction, exit: Exit) {
+      const locs = layer === 'aerial' ? this.aerialLocations : this.undergroundLocations
+      const loc = locs[locationId]
+      if (!loc) return
+
+      let createdNew = false
+      if (exit !== null && exit.kind === 'location') {
+        if (!(exit.id in locs)) {
+          this.addLayerLocation(layer, exit.id)
+          createdNew = true
+        }
+      }
+
+      loc.exits[dir] = exit
+
+      if (exit !== null && exit.kind === 'location') {
+        const reverse = OPPOSITE[dir]
+        if (createdNew || locs[exit.id].exits[reverse] === null) {
+          locs[exit.id].exits[reverse] = { kind: 'location', id: locationId }
+        }
+      }
+    },
+
     setNotes(locationId: LocationId, notes: string) {
       const loc = this.locations[locationId]
       if (loc) loc.notes = notes
     },
 
-    setSubMapFlag(locationId: LocationId, type: SubMapType, value: boolean) {
+    setLayerNotes(layer: 'aerial' | 'underground', locationId: LocationId, notes: string) {
+      const locs = layer === 'aerial' ? this.aerialLocations : this.undergroundLocations
+      const loc = locs[locationId]
+      if (loc) loc.notes = notes
+    },
+
+    setInteriorFlag(locationId: LocationId, value: boolean) {
       const loc = this.locations[locationId]
       if (!loc) return
-      if (type === 'interior') loc.hasInterior = value
-      else if (type === 'aerial') loc.hasAerial = value
-      else loc.hasUnderground = value
+      loc.hasInterior = value
+    },
+
+    setLayerEntry(locationId: LocationId, layer: 'aerial' | 'underground', entryId: LocationId | null) {
+      const loc = this.locations[locationId]
+      if (!loc) return
+      if (layer === 'aerial') loc.aerialEntryId = entryId
+      else loc.undergroundEntryId = entryId
+      if (entryId) {
+        const locs = layer === 'aerial' ? this.aerialLocations : this.undergroundLocations
+        if (!(entryId in locs)) this.addLayerLocation(layer, entryId)
+      }
     },
 
     createSubMap(parentId: LocationId, type: SubMapType, startingLocationId: LocationId): SubMap {
@@ -81,9 +132,6 @@ export const useAtlasStore = defineStore('atlas', {
       const subMap: SubMap = {
         id, type, parentId,
         locations: { [startingLocationId]: startLoc },
-        currentLocationId: startingLocationId,
-        visitedLocations: [startingLocationId],
-        actionTaken: {},
       }
       this.subMaps[id] = subMap
       return subMap
@@ -132,23 +180,10 @@ export const useAtlasStore = defineStore('atlas', {
       if (loc) loc.notes = notes
     },
 
-    goToSubMapLocation(subMapId: string, locationId: LocationId) {
-      const subMap = this.subMaps[subMapId]
-      if (!subMap || !(locationId in subMap.locations)) return
-      subMap.currentLocationId = locationId
-      if (!subMap.visitedLocations.includes(locationId)) {
-        subMap.visitedLocations.push(locationId)
-      }
-    },
-
-    toggleSubMapActionTaken(subMapId: string, locationId: LocationId) {
-      const subMap = this.subMaps[subMapId]
-      if (!subMap) return
-      subMap.actionTaken[locationId] = !subMap.actionTaken[locationId]
-    },
-
     restoreFromBackup(atlas: PersistentAtlas) {
       this.locations = atlas.locations ?? {}
+      this.aerialLocations = atlas.aerialLocations ?? {}
+      this.undergroundLocations = atlas.undergroundLocations ?? {}
       this.subMaps = atlas.subMaps ?? {}
       this.sessions = atlas.sessions ?? []
       this.activeSessionId = atlas.activeSessionId ?? null
