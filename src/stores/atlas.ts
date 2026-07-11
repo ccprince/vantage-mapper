@@ -44,7 +44,7 @@ export const useAtlasStore = defineStore('atlas', {
       if (!loc) return
 
       let createdNew = false
-      if (exit !== null && exit.kind === 'location') {
+      if (exit !== null && exit.kind === 'location' && exit.id) {
         if (!(exit.id in this.locations)) {
           this.addLocation(exit.id, loc.layer)
           createdNew = true
@@ -53,7 +53,7 @@ export const useAtlasStore = defineStore('atlas', {
 
       loc.exits[dir] = exit
 
-      if (exit !== null && exit.kind === 'location') {
+      if (exit !== null && exit.kind === 'location' && exit.id) {
         const reverse = OPPOSITE[dir]
         if (createdNew || this.locations[exit.id].exits[reverse] === null) {
           this.locations[exit.id].exits[reverse] = { kind: 'location', id: locationId }
@@ -61,24 +61,23 @@ export const useAtlasStore = defineStore('atlas', {
       }
     },
 
-    setConnection(locationId: LocationId, targetLayer: LayerType, exit: Exit) {
+    setConnection(locationId: LocationId, targetLayer: LayerType, id: LocationId | null) {
       const loc = this.locations[locationId]
       if (!loc || targetLayer === loc.layer) return
 
       let createdNew = false
-      if (exit !== null && exit.kind === 'location') {
-        if (!(exit.id in this.locations)) {
-          this.addLocation(exit.id, targetLayer)
-          createdNew = true
-        }
+      if (id !== null && !(id in this.locations)) {
+        this.addLocation(id, targetLayer)
+        createdNew = true
       }
 
-      loc.connections[targetLayer] = exit
+      if (id !== null) loc.connections[targetLayer] = id
+      else delete loc.connections[targetLayer]
 
-      if (exit !== null && exit.kind === 'location') {
-        const target = this.locations[exit.id]
+      if (id !== null) {
+        const target = this.locations[id]
         if (createdNew || !target.connections[loc.layer]) {
-          target.connections[loc.layer] = { kind: 'location', id: locationId }
+          target.connections[loc.layer] = locationId
         }
       }
     },

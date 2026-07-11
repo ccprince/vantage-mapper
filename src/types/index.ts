@@ -5,7 +5,7 @@ export type Direction = 'north' | 'south' | 'east' | 'west'
 export type LayerType = 'surface' | 'aerial' | 'underground' | 'interior' | 'city'
 
 export type Exit =
-  | { kind: 'location'; id: LocationId }
+  | { kind: 'location'; id: LocationId | null }
   | { kind: 'departure'; id: LocationId | null }
   | { kind: 'blocked' }
   | null
@@ -15,8 +15,10 @@ export interface Location {
   layer: LayerType
   exits: Record<Direction, Exit>
   // Action-based (non-compass) links to other layers, e.g. a dig or an entrance.
-  // Keyed by destination layer; never contains this location's own layer.
-  connections: Partial<Record<LayerType, Exit>>
+  // Keyed by destination layer; never contains this location's own layer. A
+  // layer's presence in this map (with a non-null id) is itself the record of
+  // the connection — there's no separate "known but unresolved" state.
+  connections: Partial<Record<LayerType, LocationId>>
   notes: string
 }
 

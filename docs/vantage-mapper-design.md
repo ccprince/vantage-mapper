@@ -38,9 +38,9 @@ A browser-based tablet companion for the board game _Vantage_, enabling players 
 // A direction from a location
 type Direction = "north" | "south" | "east" | "west";
 
-// What a direction — or a connection to another layer — leads to
+// What a direction leads to
 type Exit =
-  | { kind: "location"; id: LocationId } // a known, traversable exit
+  | { kind: "location"; id: LocationId | null } // a known, traversable exit; id null until the destination is recorded
   | { kind: "departure"; id: LocationId | null } // asterisk — destination unknown until the departure is taken
   | { kind: "blocked" } // cannot be traversed
   | null; // not yet discovered
@@ -60,8 +60,10 @@ interface Location {
   exits: Record<Direction, Exit>; // on-map compass adjacency; can, rarely, cross layers
   // Action-based (non-compass) links to other layers — a dig, a climb, an
   // entrance — keyed by destination layer. Never contains this location's
-  // own layer. Most locations have no connections at all.
-  connections: Partial<Record<LayerType, Exit>>;
+  // own layer. Most locations have no connections at all. A layer's presence
+  // here (with a non-null id) is itself the record of the connection — there
+  // is no separate "known but unresolved" state, unlike a regular exit.
+  connections: Partial<Record<LayerType, LocationId>>;
   notes: string;
 }
 
@@ -212,7 +214,7 @@ Each location is rendered as a filled square. The grid is sized so that each cel
 **Within the square:**
 
 - The 3-digit location ID is centered in the upper portion of the square
-- The lower-left corner shows a row of small letter badges, one per other layer this location has a recorded `connections` entry for (`I`nterior, `A`erial, `U`nderground, `C`ity, `S`urface as applicable) — dim if unresolved, solid once the destination is known
+- The lower-left corner shows a row of small letter badges, one per other layer this location has a recorded `connections` entry for (`I`nterior, `A`erial, `U`nderground, `C`ity, `S`urface as applicable)
 - The lower-right corner displays `✓` if an action has been taken there this session, rendered in the action-taken accent color
 
 **In the gutter between squares:**
@@ -267,23 +269,23 @@ A panel (right sidebar or overlay) showing everything about the selected locatio
 - **ID**, a **"Set as current location"** button (updates `currentLocationId` to this location without moving the display center), and a **"Center map here"** button (updates `displayCenter` to this location without changing the player's current location)
 
 - **Exit editor:** one row per direction (north, south, east, west). Each row has:
-  - A 3-digit text field for the destination location ID
-  - A "Departure" toggle button
-  - A "Blocked" toggle button
+  - A kind selector: "Location", "Departure", or "Blocked"
+  - A 3-digit text field for the destination location ID (disabled when "Blocked" is selected)
 
-  At most one toggle can be active per direction. The four resulting states are:
+  The ID field is optional for both "Location" and "Departure" — a recorded exit whose destination isn't known yet just stops traversal without drawing any marker. The resulting states are:
 
-  | Field  | Departure | Blocked | Meaning                                                             |
-  | ------ | --------- | ------- | ------------------------------------------------------------------- |
-  | Empty  | Off       | Off     | Unknown — exit not yet explored                                     |
-  | Filled | Off       | Off     | Regular exit to the given location                                  |
-  | Empty  | On        | Off     | Unresolved departure — asterisk known, destination not yet recorded |
-  | Filled | On        | Off     | Resolved departure — destination recorded                           |
-  | —      | Off       | On      | Blocked — cannot be traversed (field disabled)                      |
+  | Kind      | ID     | Meaning                                                              |
+  | --------- | ------ | --------------------------------------------------------------------- |
+  | —         | —      | Unknown — exit not yet explored (no row selection made)              |
+  | Location  | Empty  | Regular exit known to exist, destination not yet recorded            |
+  | Location  | Filled | Regular exit to the given location                                   |
+  | Departure | Empty  | Unresolved departure — asterisk known, destination not yet recorded  |
+  | Departure | Filled | Resolved departure — destination recorded                            |
+  | Blocked   | —      | Blocked — cannot be traversed (field disabled)                       |
 
   All changes save immediately. The field accepts any valid location ID, since IDs share one global namespace regardless of layer.
 
-- **Connections:** one row per other layer (every `LayerType` value except the location's own). Each row uses the same editor as an exit — a 3-digit destination field, a "Departure" toggle, and a "Blocked" toggle — bound to `connections[layer]` instead of a compass direction. A "Go" button appears once the row resolves to a known destination, switching the active layer tab to it.
+- **Connections:** one row per other layer (every `LayerType` value except the location's own). Unlike an exit, a connection has no direction to depart from and nothing to be blocked in, so each row is just an optional 3-digit destination field, bound to `connections[layer]` — a filled field means a connection to that location, an empty field means no connection at all. A "Go" button appears once the row has a destination, switching the active layer tab to it.
 
 - **Session state:**
   - "Visited this game" checkbox (auto-checked on selection, but can be toggled)

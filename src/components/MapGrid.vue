@@ -136,20 +136,10 @@ function cellActionFill(id: LocationId): string {
 
 // ── Connection badges (lower-left) ──────────────────────────────
 // One small letter per other layer this location has a recorded connection to.
-type Badge = { layer: LayerType; resolved: boolean }
-
-function connectionBadges(id: LocationId): Badge[] {
+function connectionBadges(id: LocationId): LayerType[] {
   const loc = locationAt(id)
   if (!loc) return []
-  const badges: Badge[] = []
-  for (const layer of ALL_LAYERS) {
-    if (layer === loc.layer) continue
-    const exit = loc.connections[layer]
-    if (!exit) continue
-    const resolved = exit.kind === 'location' || (exit.kind === 'departure' && !!exit.id)
-    badges.push({ layer, resolved })
-  }
-  return badges
+  return ALL_LAYERS.filter(layer => layer !== loc.layer && !!loc.connections[layer])
 }
 
 // ── Exit lines ─────────────────────────────────────────────────
@@ -168,7 +158,7 @@ const exitLines = computed<ExitLine[]>(() => {
     for (const [, exit] of Object.entries(loc.exits) as [Direction, Exit][]) {
       if (!exit || exit.kind !== 'location') continue
       const tgt = exit.id
-      if (!layout.value.placed.has(tgt)) continue
+      if (!tgt || !layout.value.placed.has(tgt)) continue
 
       const key = [id, tgt].sort().join(':')
       if (drawn.has(key)) continue
@@ -362,14 +352,14 @@ onBeforeUnmount(clearLongPress)
         >{{ id }}</text>
         <!-- Connection badges (lower-left): one letter per other-layer link -->
         <text
-          v-for="(badge, bi) in connectionBadges(id)"
+          v-for="(layer, bi) in connectionBadges(id)"
           :key="`badge-${bi}`"
           :x="cellLeft(dx) + 3 + bi * 7"
           :y="cellTop(dy) + CELL - 2"
           :class="$style.cellFlag"
-          :style="{ fill: cellFlagFill(id), opacity: badge.resolved ? 1 : 0.5 }"
+          :style="{ fill: cellFlagFill(id) }"
           dominant-baseline="auto"
-        >{{ LAYER_INITIAL[badge.layer] }}</text>
+        >{{ LAYER_INITIAL[layer] }}</text>
         <!-- Action taken (lower-right) -->
         <text
           v-if="!readOnly && actionTakenMap[id]"

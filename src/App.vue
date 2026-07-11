@@ -143,8 +143,7 @@ function onCenterMap(id: LocationId) {
 
 function onFollowConnection(layer: LayerType) {
   if (!selectedLocation.value) return
-  const exit = selectedLocation.value.connections[layer]
-  const targetId = exit && exit.kind !== 'blocked' ? exit.id : null
+  const targetId = selectedLocation.value.connections[layer] ?? null
   if (!targetId) return
 
   uiStore.activeLayer = layer

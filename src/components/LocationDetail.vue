@@ -31,7 +31,7 @@ type ExitDraft = { kind: EditKind; id: string }
 
 function draftFromExit(exit: Exit): ExitDraft {
   if (exit === null || exit === undefined) return { kind: 'location', id: '' }
-  if (exit.kind === 'location') return { kind: 'location', id: exit.id }
+  if (exit.kind === 'location') return { kind: 'location', id: exit.id ?? '' }
   if (exit.kind === 'departure') return { kind: 'departure', id: exit.id ?? '' }
   return { kind: 'blocked', id: '' }
 }
@@ -39,15 +39,13 @@ function draftFromExit(exit: Exit): ExitDraft {
 function draftError(touched: boolean, draft: ExitDraft): string {
   if (!touched) return ''
   const { kind, id } = draft
-  if (kind === 'location' && !/^\d{3}$/.test(id)) return 'Enter a 3-digit location ID'
-  if (kind === 'departure' && id !== '' && !/^\d{3}$/.test(id)) return '3-digit ID or leave blank'
+  if ((kind === 'location' || kind === 'departure') && id !== '' && !/^\d{3}$/.test(id)) return '3-digit ID or leave blank'
   return ''
 }
 
 function draftValid(draft: ExitDraft): boolean {
   const { kind, id } = draft
-  if (kind === 'location') return /^\d{3}$/.test(id)
-  if (kind === 'departure' && id !== '') return /^\d{3}$/.test(id)
+  if ((kind === 'location' || kind === 'departure') && id !== '') return /^\d{3}$/.test(id)
   return true
 }
 
@@ -106,7 +104,7 @@ function saveEditExits() {
   for (const dir of DIRECTIONS) {
     const { kind, id } = exitDrafts.value[dir]
     let exit: Exit
-    if (kind === 'location') exit = { kind: 'location', id }
+    if (kind === 'location') exit = { kind: 'location', id: id || null }
     else if (kind === 'departure') exit = { kind: 'departure', id: id || null }
     else exit = { kind: 'blocked' }
     atlasStore.setExit(props.location.id, dir, exit)
@@ -120,6 +118,8 @@ function onExitKindChange(dir: Direction) {
 }
 
 // --- Connections (action-based links to other layers) ---
+// A connection is just an optional destination ID: a filled field means a
+// connection to that location, an empty field means no connection at all.
 
 const LAYER_LABEL: Record<LayerType, string> = {
   surface: 'Surface', aerial: 'Aerial', underground: 'Underground', interior: 'Interior', city: 'City',
@@ -129,12 +129,12 @@ const ALL_LAYERS: LayerType[] = ['surface', 'aerial', 'underground', 'interior',
 const otherLayers = computed(() => ALL_LAYERS.filter(l => l !== props.location.layer))
 
 const editingConnections = ref(false)
-const connectionDrafts = ref<Partial<Record<LayerType, ExitDraft>>>({})
+const connectionDrafts = ref<Partial<Record<LayerType, string>>>({})
 const connectionDraftTouched = ref<Partial<Record<LayerType, boolean>>>({})
 
 function startEditConnections() {
   for (const layer of otherLayers.value) {
-    connectionDrafts.value[layer] = draftFromExit(props.location.connections[layer] ?? null)
+    connectionDrafts.value[layer] = props.location.connections[layer] ?? ''
     connectionDraftTouched.value[layer] = false
   }
   editingConnections.value = true
@@ -145,30 +145,26 @@ function cancelEditConnections() {
 }
 
 function connectionDraftError(layer: LayerType): string {
-  return draftError(connectionDraftTouched.value[layer] ?? false, connectionDrafts.value[layer]!)
+  if (!connectionDraftTouched.value[layer]) return ''
+  const id = connectionDrafts.value[layer] ?? ''
+  return id !== '' && !/^\d{3}$/.test(id) ? '3-digit ID or leave blank' : ''
 }
 
 const connectionDraftsValid = computed(() =>
-  otherLayers.value.every(layer => draftValid(connectionDrafts.value[layer]!))
+  otherLayers.value.every(layer => {
+    const id = connectionDrafts.value[layer] ?? ''
+    return id === '' || /^\d{3}$/.test(id)
+  })
 )
 
 function saveEditConnections() {
   for (const layer of otherLayers.value) connectionDraftTouched.value[layer] = true
   if (!connectionDraftsValid.value) return
   for (const layer of otherLayers.value) {
-    const { kind, id } = connectionDrafts.value[layer]!
-    let exit: Exit
-    if (kind === 'location') exit = { kind: 'location', id }
-    else if (kind === 'departure') exit = { kind: 'departure', id: id || null }
-    else exit = { kind: 'blocked' }
-    atlasStore.setConnection(props.location.id, layer, exit)
+    const id = connectionDrafts.value[layer] || null
+    atlasStore.setConnection(props.location.id, layer, id)
   }
   editingConnections.value = false
-}
-
-function onConnectionKindChange(layer: LayerType) {
-  connectionDrafts.value[layer]!.id = ''
-  connectionDraftTouched.value[layer] = false
 }
 
 // --- Notes ---
@@ -267,7 +263,7 @@ function onActionTaken() {
               v-model="exitDrafts[dir].id"
               type="text"
               maxlength="3"
-              :placeholder="exitDrafts[dir].kind === 'departure' ? 'opt' : exitDrafts[dir].kind === 'blocked' ? '' : '000'"
+              :placeholder="exitDrafts[dir].kind === 'blocked' ? '' : 'opt'"
               :disabled="exitDrafts[dir].kind === 'blocked'"
               spellcheck="false"
               autocomplete="off"
@@ -302,10 +298,10 @@ function onActionTaken() {
           <div v-for="layer in otherLayers" :key="layer" :class="$style.subMapRow">
             <span :class="$style.layerEntryLabel">{{ LAYER_LABEL[layer] }}</span>
             <span :class="$style.compassDestId">
-              {{ destinationOf(location.connections[layer]) ?? '—' }}
+              {{ location.connections[layer] ?? '—' }}
             </span>
             <button
-              v-if="destinationOf(location.connections[layer])"
+              v-if="location.connections[layer]"
               :class="$style.subMapOpenBtn"
               @click="emit('followConnection', layer)"
             >Go</button>
@@ -316,26 +312,12 @@ function onActionTaken() {
         <div v-else :class="$style.exitEditorAll">
           <div v-for="layer in otherLayers" :key="layer" :class="$style.exitEditorRow">
             <span :class="$style.layerEntryLabel">{{ LAYER_LABEL[layer] }}</span>
-            <div :class="$style.kindOptions">
-              <label v-for="k in (['location', 'departure', 'blocked'] as EditKind[])" :key="k" :class="$style.kindOption">
-                <input
-                  type="radio"
-                  :value="k"
-                  v-model="connectionDrafts[layer]!.kind"
-                  @change="onConnectionKindChange(layer)"
-                />
-                <span :class="[$style.kindLabel, connectionDrafts[layer]!.kind === k && $style.kindLabelActive]">
-                  {{ k === 'location' ? 'Loc' : k === 'departure' ? 'Dep' : 'Blk' }}
-                </span>
-              </label>
-            </div>
             <input
               :class="[$style.idInput, connectionDraftError(layer) && $style.idInputError]"
-              v-model="connectionDrafts[layer]!.id"
+              v-model="connectionDrafts[layer]"
               type="text"
               maxlength="3"
-              :placeholder="connectionDrafts[layer]!.kind === 'departure' ? 'opt' : connectionDrafts[layer]!.kind === 'blocked' ? '' : '000'"
-              :disabled="connectionDrafts[layer]!.kind === 'blocked'"
+              placeholder="none"
               spellcheck="false"
               autocomplete="off"
               inputmode="numeric"

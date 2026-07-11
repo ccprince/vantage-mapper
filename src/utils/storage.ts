@@ -1,7 +1,7 @@
 import type { PersistentAtlas } from '../types'
 
 const STORAGE_KEY = 'vantage-atlas'
-export const CURRENT_VERSION = 6
+export const CURRENT_VERSION = 7
 
 export function downloadAtlas(atlas: PersistentAtlas): void {
   const date = new Date().toISOString().slice(0, 10)
@@ -59,6 +59,21 @@ function migrate(atlas: PersistentAtlas): { atlas: PersistentAtlas; wasReset: bo
   // discarded rather than transformed.
   if ((a.version ?? 0) < 6) {
     return { atlas: emptyAtlas(), wasReset: true }
+  }
+
+  // Version 7 flattened `connections` from an Exit-shaped object per layer
+  // (`{ kind: 'location', id }` / departure / blocked / null) down to a plain
+  // `LocationId | undefined`, since a connection can no longer be "known but
+  // unresolved" — presence of an id is itself the record of the connection.
+  if (a.version === 6) {
+    for (const loc of Object.values(a.locations ?? {}) as any[]) {
+      const flattened: Record<string, string> = {}
+      for (const [layer, exit] of Object.entries(loc.connections ?? {})) {
+        const id = (exit as any)?.kind === 'location' ? (exit as any).id : null
+        if (id) flattened[layer] = id
+      }
+      loc.connections = flattened
+    }
   }
 
   return { atlas: { ...a, version: CURRENT_VERSION }, wasReset: false }
