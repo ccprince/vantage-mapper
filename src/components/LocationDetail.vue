@@ -56,6 +56,17 @@ function destinationOf(exit: Exit | undefined): LocationId | null {
   return null
 }
 
+const LAYER_INITIAL: Record<LayerType, string> = {
+  surface: 'S', aerial: 'A', underground: 'U', interior: 'I', city: 'C',
+}
+
+function crossLayerInitial(destId: LocationId | null): string | null {
+  if (!destId) return null
+  const dest = atlasStore.locations[destId]
+  if (!dest || dest.layer === props.location.layer) return null
+  return LAYER_INITIAL[dest.layer]
+}
+
 // --- Exit editing ---
 
 const DIRECTIONS: Direction[] = ['north', 'east', 'south', 'west']
@@ -181,6 +192,13 @@ function saveNotes() {
 function onActionTaken() {
   sessionStore.toggleActionTaken(props.location.id)
 }
+
+// --- Layer ---
+
+function onLayerChange(event: Event) {
+  const layer = (event.target as HTMLSelectElement).value as LayerType
+  atlasStore.setLayer(props.location.id, layer)
+}
 </script>
 
 <template>
@@ -189,7 +207,14 @@ function onActionTaken() {
     <header :class="$style.header">
       <div :class="$style.headerLeft">
         <span :class="$style.locationId">{{ location.id }}</span>
-        <span :class="$style.layerBadge">{{ LAYER_LABEL[location.layer] }}</span>
+        <select
+          :class="$style.layerBadge"
+          :value="location.layer"
+          @change="onLayerChange"
+          aria-label="Location layer"
+        >
+          <option v-for="layer in ALL_LAYERS" :key="layer" :value="layer">{{ LAYER_LABEL[layer] }}</option>
+        </select>
         <span v-if="isCurrentLocation" :class="$style.currentBadge">Here</span>
       </div>
       <button :class="$style.closeBtn" @click="emit('close')" aria-label="Close panel">×</button>
@@ -232,7 +257,13 @@ function onActionTaken() {
               @click="emit('go', destinationOf(location.exits[dir])!)"
             >
               <span :class="$style.compassDestId">{{ destinationOf(location.exits[dir]) }}</span>
-              <span>Go</span>
+              <span>
+                Go
+                <span
+                  v-if="crossLayerInitial(destinationOf(location.exits[dir]))"
+                  :class="$style.crossLayerBadge"
+                >{{ crossLayerInitial(destinationOf(location.exits[dir])) }}</span>
+              </span>
             </button>
             <span v-else-if="destinationOf(location.exits[dir])" :class="$style.compassDestId">
               {{ destinationOf(location.exits[dir]) }}
@@ -410,6 +441,14 @@ function onActionTaken() {
   border: 1px solid var(--color-border);
   border-radius: 3px;
   padding: 2px 6px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.layerBadge:hover,
+.layerBadge:focus {
+  border-color: var(--color-text-muted);
+  color: var(--color-text);
 }
 
 .currentBadge {
@@ -578,6 +617,22 @@ function onActionTaken() {
 .goBtn:hover {
   border-color: var(--color-cell-visited);
   background: rgba(91, 143, 168, 0.08);
+}
+
+.crossLayerBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: var(--color-cell-visited);
+  color: var(--color-map-surface);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
 }
 
 /* Exit editor (all-at-once) */

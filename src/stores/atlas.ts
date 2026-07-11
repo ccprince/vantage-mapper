@@ -82,6 +82,11 @@ export const useAtlasStore = defineStore('atlas', {
       }
     },
 
+    setLayer(locationId: LocationId, layer: LayerType) {
+      const loc = this.locations[locationId]
+      if (loc) loc.layer = layer
+    },
+
     setNotes(locationId: LocationId, notes: string) {
       const loc = this.locations[locationId]
       if (loc) loc.notes = notes
