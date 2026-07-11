@@ -26,10 +26,10 @@ src/
     session.ts      # sessionStore — active game session
     ui.ts           # uiStore — ephemeral display state
   components/
-    MapGrid.vue     # main map canvas, reused for sub-maps
-    SubMapView.vue  # modal overlay wrapping MapGrid for a sub-map
+    MapGrid.vue     # main map canvas, shared by every layer tab
     LocationDetail.vue
     SessionManager.vue
+    JumpToLocation.vue
   types/
     index.ts        # all shared TypeScript types
   utils/
@@ -43,9 +43,10 @@ docs/
 
 ## Key Invariants
 
-- Location IDs are always 3-digit zero-padded strings (`"042"`, not `42`).
-- The atlas is a directed graph; locations have no stored coordinates. Display positions are computed at render time by BFS from the display center.
+- Location IDs are always 3-digit zero-padded strings (`"042"`, not `42`), and shared across a single global namespace — no two locations anywhere in the atlas, on any layer, share an ID.
+- All locations live in one `locations: Record<LocationId, Location>` collection; each `Location` carries a `layer` field (`surface` | `aerial` | `underground` | `interior` | `city`). There are no per-layer collections or sub-map records.
+- The atlas is a directed graph; locations have no stored coordinates. Display positions are computed at render time by BFS from the display center, scoped to the active layer — traversal does not cross into a location on a different layer, though the crossing exit itself is still recorded in the graph and rendered as a cross-layer marker.
 - `actionTaken` is per-session and can be toggled freely within that session.
 - The `version` field in `PersistentAtlas` must be incremented whenever the schema changes, with a migration function added to `storage.ts`.
 - `<MapGrid>` must never read from localStorage directly — all data flows through stores.
-- Reverse exits are auto-populated via a regular (non-departure) exit when: (a) the destination is newly created, or (b) the destination already exists but its exit in the opposite direction is currently null. If the destination already has a non-null exit in the opposite direction, it is left untouched.
+- Reverse exits are auto-populated via a regular (non-departure) exit when: (a) the destination is newly created, or (b) the destination already exists but its exit in the opposite direction is currently null. If the destination already has a non-null exit in the opposite direction, it is left untouched. The same rule applies to `connections` (action-based, non-compass links to another layer, e.g. a dig or an entrance), keyed by destination layer instead of compass direction.

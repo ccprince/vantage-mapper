@@ -11,7 +11,7 @@ A browser-based tablet companion for the board game _Vantage_, enabling players 
 - Render the atlas as a navigable map centered on the session's starting location, with known locations radiating outward by direction
 - Persist map data (location IDs, connections, notes) across games as a graph of directional relationships
 - Track per-session state: which locations were visited _this game_, and whether a location action was taken
-- Support sub-maps: interior, aerial, and underground locations linked from main-map locations
+- Support multiple map layers — surface, aerial, underground, interior, city — as one unified location graph, linked by ordinary exits and by action-based connections
 - Work well on a tablet in landscape orientation, with touch-first interactions
 
 ---
@@ -38,44 +38,30 @@ A browser-based tablet companion for the board game _Vantage_, enabling players 
 // A direction from a location
 type Direction = "north" | "south" | "east" | "west";
 
-// What a direction leads to
+// What a direction — or a connection to another layer — leads to
 type Exit =
   | { kind: "location"; id: LocationId } // a known, traversable exit
   | { kind: "departure"; id: LocationId | null } // asterisk — destination unknown until the departure is taken
   | { kind: "blocked" } // cannot be traversed
   | null; // not yet discovered
 
-// A three-digit location identifier, e.g. "042"
+// A three-digit location identifier, e.g. "042". IDs share a single global
+// namespace across every layer — no two locations anywhere in the atlas,
+// on any layer, share an ID.
 type LocationId = string;
 
-// A location on the surface layer. No coordinates are stored — position is
+type LayerType = "surface" | "aerial" | "underground" | "interior" | "city";
+
+// A single location, on any layer. No coordinates are stored — position is
 // derived at render time by traversing exit relationships from a center node.
 interface Location {
   id: LocationId;
-  exits: Record<Direction, Exit>;
-  hasInterior: boolean;
-  aerialEntryId: LocationId | null;      // which aerial location this surface spot connects to
-  undergroundEntryId: LocationId | null; // which underground location this surface spot connects to
-  notes: string;
-}
-
-// An interior sub-map anchored to a specific surface location.
-// Aerial and underground are full independent layers, not sub-maps.
-type SubMapType = "interior";
-
-interface SubMap {
-  id: string; // e.g. "042-interior"
-  parentId: LocationId;
-  type: SubMapType;
-  locations: Record<LocationId, LayerLocation>;
-}
-
-// A location in the aerial or underground layer, or inside an interior sub-map.
-// Same exit graph structure as a surface Location but carries no layer-link flags.
-// Location IDs are globally unique — no ID can appear in more than one layer.
-interface LayerLocation {
-  id: LocationId;
-  exits: Record<Direction, Exit>;
+  layer: LayerType;
+  exits: Record<Direction, Exit>; // on-map compass adjacency; can, rarely, cross layers
+  // Action-based (non-compass) links to other layers — a dig, a climb, an
+  // entrance — keyed by destination layer. Never contains this location's
+  // own layer. Most locations have no connections at all.
+  connections: Partial<Record<LayerType, Exit>>;
   notes: string;
 }
 
@@ -94,9 +80,9 @@ interface GameSession {
   visitedLocations: LocationId[]; // flat and global — IDs are unique across all layers
   actionTaken: Record<LocationId, boolean>;
 }
-
-type LayerType = "surface" | "aerial" | "underground";
 ```
+
+There is no separate representation for aerial, underground, interior, or city locations — they are ordinary `Location` values distinguished only by their `layer` field, all living in the same collection. A location's compass `exits` normally stay within its own layer, but occasionally cross into another layer directly (e.g. an underground tunnel that surfaces) — the map renderer (see `<MapGrid>` below) stops laying out the destination when this happens, but the exit itself is unrestricted in the data model. Non-compass, action-based ways to reach another layer (a dig, a climb, an entrance) are recorded in `connections` instead, generalizing what used to be per-layer entry-ID fields.
 
 ### Persistence shape
 
@@ -105,16 +91,13 @@ All data lives under a single `localStorage` key (`vantage-atlas`) as a serializ
 ```typescript
 interface PersistentAtlas {
   version: number;
-  locations: Record<LocationId, Location>;         // surface layer
-  aerialLocations: Record<LocationId, LayerLocation>;
-  undergroundLocations: Record<LocationId, LayerLocation>;
-  subMaps: Record<string, SubMap>; // keyed by SubMap.id, e.g. "042-interior"
+  locations: Record<LocationId, Location>; // every layer, one collection
   sessions: GameSession[];
   activeSessionId: GameId | null;
 }
 ```
 
-A migration utility checks `version` on load and applies forward-only transforms if the schema changes.
+A migration utility checks `version` on load and applies forward-only transforms if the schema changes. Schema versions before the unified-layer model (introduced when the per-layer-collection approach proved unable to represent a location with normal exits into two different layers) are not migrated — they're discarded and replaced with an empty atlas, since there is no meaningful transform from the old shape's implicit per-building interior ID namespaces into the new global one.
 
 ---
 
@@ -125,8 +108,8 @@ A migration utility checks `version` on load and applies forward-only transforms
 Owns all persistent data. Responsible for:
 
 - Loading/saving to `localStorage`
-- CRUD on locations and sub-maps
-- Querying: which location lies in a given direction from a given location; sub-maps for a parent
+- CRUD on locations, across every layer
+- Querying: which location lies in a given direction from a given location; which connection a location has to another layer
 - Deriving display state: which locations are known, which have been visited this session
 
 ### `sessionStore`
@@ -146,7 +129,7 @@ Owns the active `GameSession`. Responsible for:
 Ephemeral UI state only. Responsible for:
 
 - Currently selected location (for the detail panel)
-- Active view (main map, sub-map, location detail panel)
+- Active view (main map, location detail panel) and active layer tab
 - The **display center** — read from `displayCenter` in the active session (or the reviewed session); `uiStore` does not own this value but exposes it as a computed property for components to consume
 - Whether the detail panel is open
 
@@ -220,6 +203,8 @@ If two graph paths lead to the same location with conflicting display coordinate
 
 Locations that are part of a floating subgraph (not yet connected to the main atlas) are laid out from their own root, independently of the atlas. If the player's current location is in a floating subgraph, the BFS starts from that subgraph's root and only locations reachable within it are shown. Once the subgraph merges into the atlas, the full atlas becomes visible.
 
+Because `exits` occasionally cross from one layer into another (a regular, on-map exit rather than a `connections` entry), the BFS for a given layer tab only traverses and places locations whose `layer` matches the tab being rendered. An exit to a location on a different layer is not traversed further — instead it's rendered as a small cross-layer marker in the gutter (see Cell anatomy below), naming the layer the exit leads to, without attempting to lay out that destination in the current tab.
+
 #### Cell anatomy
 
 Each location is rendered as a filled square. The grid is sized so that each cell slot — the square itself plus its surrounding gutter — accommodates two departure asterisks side by side with a small margin to spare. This gutter space is where exit indicators and departure markers live.
@@ -227,7 +212,7 @@ Each location is rendered as a filled square. The grid is sized so that each cel
 **Within the square:**
 
 - The 3-digit location ID is centered in the upper portion of the square
-- The lower-left corner displays `I` if the location has an interior sub-map
+- The lower-left corner shows a row of small letter badges, one per other layer this location has a recorded `connections` entry for (`I`nterior, `A`erial, `U`nderground, `C`ity, `S`urface as applicable) — dim if unresolved, solid once the destination is known
 - The lower-right corner displays `✓` if an action has been taken there this session, rendered in the action-taken accent color
 
 **In the gutter between squares:**
@@ -237,6 +222,8 @@ Regular (traversable) exits are drawn as a straight line connecting the edges of
 Departure exits are rendered as an asterisk placed just outside the edge of the source square, in the gutter on the appropriate side. An unresolved departure (destination unknown) shows only the asterisk. A resolved departure (destination recorded) shows the asterisk plus a line continuing to the destination square, matching the style of a regular exit line.
 
 A blocked exit is marked with `×` centered in the gutter on that side.
+
+An exit whose destination lives on a different layer is marked with a small circled letter (the destination layer's initial) in the gutter on that side, instead of a connecting line — the layout stops there for this tab, but the location is still fully known and shows up when its own layer's tab is active.
 
 An undiscovered exit shows nothing in the gutter.
 
@@ -263,11 +250,13 @@ There is no manual panning. The display center changes only on teleport or when 
 
 ### Layer tab bar
 
-A persistent tab bar at the bottom of the map views (session, atlas, previous-session) lets the player switch between the three map layers: Surface, Aerial, and Underground. Each layer is an independent directed graph with its own BFS layout, its own display center, and its own floating roots. The player's actual position (`currentLocationId`) is a single global value — the ring marker appears only on the layer that contains it.
+A persistent tab bar at the bottom of the map views (session, atlas, previous-session) lets the player switch between five map layers: Surface, Aerial, Underground, Interior, and City. Each tab shows the BFS layout for locations whose `layer` matches that tab, from its own display center; each layer also tracks its own floating roots. The player's actual position (`currentLocationId`) is a single global value — the ring marker appears only on the layer that contains it.
 
-### Interior sub-map view
+Switching to a layer that has no known locations yet simply shows an empty grid — there's nothing else to set up, since every layer draws from the same `locations` collection.
 
-Activated when the player taps "Open" on the Interior connection in a surface location's detail panel. Replaces the main map with a full-screen view bound to that interior's location graph, with a breadcrumb header and a "← Back" button. Interior locations do not link to further sub-maps. `<MapGrid>` is parameterized by a location collection and reused identically for all views.
+### Following a connection to another layer
+
+A location's detail panel lists a row per other layer, showing that location's `connections` entry (if any) — the destination ID, if known, and a "Go" button once it's resolved. Tapping "Go" switches the active layer tab and, in an active session, moves `currentLocationId`/`displayCenters` to the connection's destination (marking it visited); while atlas-browsing, it just repositions that layer's browse center. There is no longer a distinct full-screen sub-map view — interior (and city) locations are shown the same way as aerial or underground locations, just on their own tab.
 
 ---
 
@@ -292,12 +281,9 @@ A panel (right sidebar or overlay) showing everything about the selected locatio
   | Filled | On        | Off     | Resolved departure — destination recorded                           |
   | —      | Off       | On      | Blocked — cannot be traversed (field disabled)                      |
 
-  All changes save immediately. For main-map locations, the field accepts any valid location ID; for sub-map locations, it accepts IDs within the same sub-map or the special value indicating a return to the main map.
+  All changes save immediately. The field accepts any valid location ID, since IDs share one global namespace regardless of layer.
 
-- **Connections** (surface locations only):
-  - Interior: toggle to mark existence; "Open" button to enter the interior sub-map
-  - Aerial entry: 3-digit ID field recording which aerial location this surface spot connects to; "Go" button to switch to the aerial layer
-  - Underground entry: same for underground
+- **Connections:** one row per other layer (every `LayerType` value except the location's own). Each row uses the same editor as an exit — a 3-digit destination field, a "Departure" toggle, and a "Blocked" toggle — bound to `connections[layer]` instead of a compass direction. A "Go" button appears once the row resolves to a known destination, switching the active layer tab to it.
 
 - **Session state:**
   - "Visited this game" checkbox (auto-checked on selection, but can be toggled)

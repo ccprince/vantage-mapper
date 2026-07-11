@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, useCssModule } from 'vue'
-import type { Location, LocationId, Direction, Exit } from '../types'
+import type { Location, LocationId, Direction, Exit, LayerType } from '../types'
 import { useAtlasStore } from '../stores/atlas'
 import { useSessionStore } from '../stores/session'
 
@@ -16,8 +16,7 @@ const emit = defineEmits<{
   go: [locationId: LocationId]
   centerMap: [locationId: LocationId]
   jump: [locationId: LocationId]
-  openSubMap: []
-  goToLayer: [layer: 'aerial' | 'underground']
+  followConnection: [layer: LayerType]
 }>()
 
 const atlasStore = useAtlasStore()
@@ -25,10 +24,41 @@ const sessionStore = useSessionStore()
 
 const $style = useCssModule()
 
-// --- Exit editing ---
+// --- Shared exit/connection editing ---
 
 type EditKind = 'unknown' | 'location' | 'departure' | 'blocked'
 type ExitDraft = { kind: EditKind; id: string }
+
+function draftFromExit(exit: Exit): ExitDraft {
+  if (exit === null || exit === undefined) return { kind: 'location', id: '' }
+  if (exit.kind === 'location') return { kind: 'location', id: exit.id }
+  if (exit.kind === 'departure') return { kind: 'departure', id: exit.id ?? '' }
+  return { kind: 'blocked', id: '' }
+}
+
+function draftError(touched: boolean, draft: ExitDraft): string {
+  if (!touched) return ''
+  const { kind, id } = draft
+  if (kind === 'location' && !/^\d{3}$/.test(id)) return 'Enter a 3-digit location ID'
+  if (kind === 'departure' && id !== '' && !/^\d{3}$/.test(id)) return '3-digit ID or leave blank'
+  return ''
+}
+
+function draftValid(draft: ExitDraft): boolean {
+  const { kind, id } = draft
+  if (kind === 'location') return /^\d{3}$/.test(id)
+  if (kind === 'departure' && id !== '') return /^\d{3}$/.test(id)
+  return true
+}
+
+function destinationOf(exit: Exit | undefined): LocationId | null {
+  if (!exit) return null
+  if (exit.kind === 'location') return exit.id
+  if (exit.kind === 'departure' && exit.id) return exit.id
+  return null
+}
+
+// --- Exit editing ---
 
 const DIRECTIONS: Direction[] = ['north', 'east', 'south', 'west']
 const DIR_LABEL: Record<Direction, string> = { north: 'N', east: 'E', south: 'S', west: 'W' }
@@ -47,14 +77,10 @@ const exitDraftTouched = ref<Record<Direction, boolean>>({
   north: false, east: false, south: false, west: false,
 })
 
-watch(() => props.location.id, () => { editingExits.value = false })
-
-function draftFromExit(exit: Exit): ExitDraft {
-  if (exit === null) return { kind: 'location', id: '' }
-  if (exit.kind === 'location') return { kind: 'location', id: exit.id }
-  if (exit.kind === 'departure') return { kind: 'departure', id: exit.id ?? '' }
-  return { kind: 'blocked', id: '' }
-}
+watch(() => props.location.id, () => {
+  editingExits.value = false
+  editingConnections.value = false
+})
 
 function startEditExits() {
   for (const dir of DIRECTIONS) {
@@ -69,21 +95,10 @@ function cancelEditExits() {
 }
 
 function exitDraftError(dir: Direction): string {
-  if (!exitDraftTouched.value[dir]) return ''
-  const { kind, id } = exitDrafts.value[dir]
-  if (kind === 'location' && !/^\d{3}$/.test(id)) return 'Enter a 3-digit location ID'
-  if (kind === 'departure' && id !== '' && !/^\d{3}$/.test(id)) return '3-digit ID or leave blank'
-  return ''
+  return draftError(exitDraftTouched.value[dir], exitDrafts.value[dir])
 }
 
-const exitDraftsValid = computed(() =>
-  DIRECTIONS.every(dir => {
-    const { kind, id } = exitDrafts.value[dir]
-    if (kind === 'location') return /^\d{3}$/.test(id)
-    if (kind === 'departure' && id !== '') return /^\d{3}$/.test(id)
-    return true
-  })
-)
+const exitDraftsValid = computed(() => DIRECTIONS.every(dir => draftValid(exitDrafts.value[dir])))
 
 function saveEditExits() {
   for (const dir of DIRECTIONS) exitDraftTouched.value[dir] = true
@@ -104,11 +119,56 @@ function onExitKindChange(dir: Direction) {
   exitDraftTouched.value[dir] = false
 }
 
-function exitDestination(exit: Exit): LocationId | null {
-  if (!exit) return null
-  if (exit.kind === 'location') return exit.id
-  if (exit.kind === 'departure' && exit.id) return exit.id
-  return null
+// --- Connections (action-based links to other layers) ---
+
+const LAYER_LABEL: Record<LayerType, string> = {
+  surface: 'Surface', aerial: 'Aerial', underground: 'Underground', interior: 'Interior', city: 'City',
+}
+const ALL_LAYERS: LayerType[] = ['surface', 'aerial', 'underground', 'interior', 'city']
+
+const otherLayers = computed(() => ALL_LAYERS.filter(l => l !== props.location.layer))
+
+const editingConnections = ref(false)
+const connectionDrafts = ref<Partial<Record<LayerType, ExitDraft>>>({})
+const connectionDraftTouched = ref<Partial<Record<LayerType, boolean>>>({})
+
+function startEditConnections() {
+  for (const layer of otherLayers.value) {
+    connectionDrafts.value[layer] = draftFromExit(props.location.connections[layer] ?? null)
+    connectionDraftTouched.value[layer] = false
+  }
+  editingConnections.value = true
+}
+
+function cancelEditConnections() {
+  editingConnections.value = false
+}
+
+function connectionDraftError(layer: LayerType): string {
+  return draftError(connectionDraftTouched.value[layer] ?? false, connectionDrafts.value[layer]!)
+}
+
+const connectionDraftsValid = computed(() =>
+  otherLayers.value.every(layer => draftValid(connectionDrafts.value[layer]!))
+)
+
+function saveEditConnections() {
+  for (const layer of otherLayers.value) connectionDraftTouched.value[layer] = true
+  if (!connectionDraftsValid.value) return
+  for (const layer of otherLayers.value) {
+    const { kind, id } = connectionDrafts.value[layer]!
+    let exit: Exit
+    if (kind === 'location') exit = { kind: 'location', id }
+    else if (kind === 'departure') exit = { kind: 'departure', id: id || null }
+    else exit = { kind: 'blocked' }
+    atlasStore.setConnection(props.location.id, layer, exit)
+  }
+  editingConnections.value = false
+}
+
+function onConnectionKindChange(layer: LayerType) {
+  connectionDrafts.value[layer]!.id = ''
+  connectionDraftTouched.value[layer] = false
 }
 
 // --- Notes ---
@@ -118,30 +178,6 @@ watch(() => props.location.notes, (v) => { notesDraft.value = v })
 
 function saveNotes() {
   atlasStore.setNotes(props.location.id, notesDraft.value)
-}
-
-// --- Connections ---
-
-const interiorEntryDraft = ref(props.location.interiorEntryId ?? '')
-const aerialEntryDraft = ref(props.location.aerialEntryId ?? '')
-const undergroundEntryDraft = ref(props.location.undergroundEntryId ?? '')
-
-watch(() => props.location.interiorEntryId, v => { interiorEntryDraft.value = v ?? '' })
-watch(() => props.location.aerialEntryId, v => { aerialEntryDraft.value = v ?? '' })
-watch(() => props.location.undergroundEntryId, v => { undergroundEntryDraft.value = v ?? '' })
-
-function saveInteriorEntry(draft: string) {
-  const id = draft.trim()
-  if (id === '' || /^\d{3}$/.test(id)) {
-    atlasStore.setInteriorEntry(props.location.id, id || null)
-  }
-}
-
-function saveLayerEntry(layer: 'aerial' | 'underground', draft: string) {
-  const id = draft.trim()
-  if (id === '' || /^\d{3}$/.test(id)) {
-    atlasStore.setLayerEntry(props.location.id, layer, id || null)
-  }
 }
 
 // --- Action taken ---
@@ -157,6 +193,7 @@ function onActionTaken() {
     <header :class="$style.header">
       <div :class="$style.headerLeft">
         <span :class="$style.locationId">{{ location.id }}</span>
+        <span :class="$style.layerBadge">{{ LAYER_LABEL[location.layer] }}</span>
         <span v-if="isCurrentLocation" :class="$style.currentBadge">Here</span>
       </div>
       <button :class="$style.closeBtn" @click="emit('close')" aria-label="Close panel">×</button>
@@ -194,15 +231,15 @@ function onActionTaken() {
             :style="{ gridRow: DIR_GRID_ROW[dir], gridColumn: DIR_GRID_COL[dir] }"
           >
             <button
-              v-if="inSession && exitDestination(location.exits[dir])"
+              v-if="inSession && destinationOf(location.exits[dir])"
               :class="$style.goBtn"
-              @click="emit('go', exitDestination(location.exits[dir])!)"
+              @click="emit('go', destinationOf(location.exits[dir])!)"
             >
-              <span :class="$style.compassDestId">{{ exitDestination(location.exits[dir]) }}</span>
+              <span :class="$style.compassDestId">{{ destinationOf(location.exits[dir]) }}</span>
               <span>Go</span>
             </button>
-            <span v-else-if="exitDestination(location.exits[dir])" :class="$style.compassDestId">
-              {{ exitDestination(location.exits[dir]) }}
+            <span v-else-if="destinationOf(location.exits[dir])" :class="$style.compassDestId">
+              {{ destinationOf(location.exits[dir]) }}
             </span>
             <span v-else :class="$style.compassDirLabel">{{ DIR_LABEL[dir] }}</span>
           </div>
@@ -255,67 +292,67 @@ function onActionTaken() {
 
       <!-- Connections -->
       <section :class="$style.section">
-        <h3 :class="$style.sectionTitle">Connections</h3>
-        <div :class="$style.subMapRows">
-          <!-- Interior sub-map -->
-          <div :class="$style.subMapRow">
-            <span :class="$style.layerEntryLabel">Interior</span>
-            <input
-              :class="[$style.layerEntryInput, interiorEntryDraft && !/^\d{3}$/.test(interiorEntryDraft) && $style.layerEntryInputError]"
-              v-model="interiorEntryDraft"
-              type="text"
-              maxlength="3"
-              placeholder="—"
-              spellcheck="false"
-              autocomplete="off"
-              inputmode="numeric"
-              @blur="saveInteriorEntry(interiorEntryDraft)"
-            />
+        <div :class="$style.sectionHeader">
+          <h3 :class="$style.sectionTitle">Connections</h3>
+          <button v-if="!editingConnections" :class="$style.sectionEditBtn" @click="startEditConnections">Edit</button>
+        </div>
+
+        <!-- Display -->
+        <div v-if="!editingConnections" :class="$style.subMapRows">
+          <div v-for="layer in otherLayers" :key="layer" :class="$style.subMapRow">
+            <span :class="$style.layerEntryLabel">{{ LAYER_LABEL[layer] }}</span>
+            <span :class="$style.compassDestId">
+              {{ destinationOf(location.connections[layer]) ?? '—' }}
+            </span>
             <button
-              v-if="location.interiorEntryId"
+              v-if="destinationOf(location.connections[layer])"
               :class="$style.subMapOpenBtn"
-              @click="emit('openSubMap')"
+              @click="emit('followConnection', layer)"
             >Go</button>
           </div>
-          <!-- Aerial layer entry -->
-          <div :class="$style.subMapRow">
-            <span :class="$style.layerEntryLabel">Aerial</span>
+        </div>
+
+        <!-- Edit form -->
+        <div v-else :class="$style.exitEditorAll">
+          <div v-for="layer in otherLayers" :key="layer" :class="$style.exitEditorRow">
+            <span :class="$style.layerEntryLabel">{{ LAYER_LABEL[layer] }}</span>
+            <div :class="$style.kindOptions">
+              <label v-for="k in (['location', 'departure', 'blocked'] as EditKind[])" :key="k" :class="$style.kindOption">
+                <input
+                  type="radio"
+                  :value="k"
+                  v-model="connectionDrafts[layer]!.kind"
+                  @change="onConnectionKindChange(layer)"
+                />
+                <span :class="[$style.kindLabel, connectionDrafts[layer]!.kind === k && $style.kindLabelActive]">
+                  {{ k === 'location' ? 'Loc' : k === 'departure' ? 'Dep' : 'Blk' }}
+                </span>
+              </label>
+            </div>
             <input
-              :class="[$style.layerEntryInput, aerialEntryDraft && !/^\d{3}$/.test(aerialEntryDraft) && $style.layerEntryInputError]"
-              v-model="aerialEntryDraft"
+              :class="[$style.idInput, connectionDraftError(layer) && $style.idInputError]"
+              v-model="connectionDrafts[layer]!.id"
               type="text"
               maxlength="3"
-              placeholder="—"
+              :placeholder="connectionDrafts[layer]!.kind === 'departure' ? 'opt' : connectionDrafts[layer]!.kind === 'blocked' ? '' : '000'"
+              :disabled="connectionDrafts[layer]!.kind === 'blocked'"
               spellcheck="false"
               autocomplete="off"
               inputmode="numeric"
-              @blur="saveLayerEntry('aerial', aerialEntryDraft)"
+              @blur="connectionDraftTouched[layer] = true"
             />
-            <button
-              v-if="location.aerialEntryId"
-              :class="$style.subMapOpenBtn"
-              @click="emit('goToLayer', 'aerial')"
-            >Go</button>
           </div>
-          <!-- Underground layer entry -->
-          <div :class="$style.subMapRow">
-            <span :class="$style.layerEntryLabel">Underground</span>
-            <input
-              :class="[$style.layerEntryInput, undergroundEntryDraft && !/^\d{3}$/.test(undergroundEntryDraft) && $style.layerEntryInputError]"
-              v-model="undergroundEntryDraft"
-              type="text"
-              maxlength="3"
-              placeholder="—"
-              spellcheck="false"
-              autocomplete="off"
-              inputmode="numeric"
-              @blur="saveLayerEntry('underground', undergroundEntryDraft)"
-            />
+          <template v-for="layer in otherLayers" :key="`err-${layer}`">
+            <p v-if="connectionDraftError(layer)" :class="$style.fieldError">
+              {{ LAYER_LABEL[layer] }}: {{ connectionDraftError(layer) }}
+            </p>
+          </template>
+          <div :class="$style.editorActions">
+            <button :class="[$style.btn, $style.btnGhost]" @click="cancelEditConnections">Cancel</button>
             <button
-              v-if="location.undergroundEntryId"
-              :class="$style.subMapOpenBtn"
-              @click="emit('goToLayer', 'underground')"
-            >Go</button>
+              :class="[$style.btn, $style.btnPrimary, !connectionDraftsValid && $style.btnDisabled]"
+              @click="saveEditConnections"
+            >Save</button>
           </div>
         </div>
       </section>
@@ -379,6 +416,18 @@ function onActionTaken() {
   font-weight: 600;
   letter-spacing: 0.08em;
   color: var(--color-text);
+}
+
+.layerBadge {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  background: var(--color-cell-unknown);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  padding: 2px 6px;
 }
 
 .currentBadge {
@@ -639,7 +688,7 @@ function onActionTaken() {
   margin-top: 6px;
 }
 
-/* Sub-maps */
+/* Sub-maps / connections */
 .subMapRows {
   display: flex;
   flex-direction: column;
@@ -670,28 +719,6 @@ function onActionTaken() {
   font-size: 13px;
   color: var(--color-text-muted);
   min-width: 96px;
-}
-
-.layerEntryInput {
-  background: var(--color-cell-unknown);
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  padding: 4px 8px;
-  color: var(--color-text);
-  font-family: var(--font-id);
-  font-size: 14px;
-  font-weight: 500;
-  letter-spacing: 0.1em;
-  width: 58px;
-  flex-shrink: 0;
-  outline: none;
-  transition: border-color 0.15s;
-}
-.layerEntryInput:focus {
-  border-color: var(--color-cell-visited);
-}
-.layerEntryInputError {
-  border-color: var(--color-error);
 }
 
 /* Notes */

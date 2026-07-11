@@ -15,9 +15,6 @@ atlasStore.$subscribe((_mutation, state) => {
   saveAtlas({
     version: CURRENT_VERSION,
     locations: state.locations,
-    aerialLocations: state.aerialLocations,
-    undergroundLocations: state.undergroundLocations,
-    subMaps: state.subMaps,
     sessions: state.sessions,
     activeSessionId: state.activeSessionId,
   })

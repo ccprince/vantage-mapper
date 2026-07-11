@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import type { GameSession, LayerLocation, LayerType, Location, LocationId } from './types'
+import type { GameSession, LayerType, Location, LocationId } from './types'
 import SessionManager from './components/SessionManager.vue'
 import LocationDetail from './components/LocationDetail.vue'
-import LayerLocationDetail from './components/LayerLocationDetail.vue'
-import SubMapLocationDetail from './components/SubMapLocationDetail.vue'
 import MapGrid from './components/MapGrid.vue'
 import JumpToLocation from './components/JumpToLocation.vue'
 import { useAtlasStore } from './stores/atlas'
@@ -19,23 +17,24 @@ const uiStore = useUiStore()
 
 type AppView = 'home' | 'session' | 'atlas' | 'prev-sessions' | 'prev-session-map'
 
+const ALL_LAYERS: LayerType[] = ['surface', 'aerial', 'underground', 'interior', 'city']
+const LAYER_LABELS: Record<LayerType, string> = {
+  surface: 'Surface',
+  aerial: 'Aerial',
+  underground: 'Underground',
+  interior: 'Interior',
+  city: 'City',
+}
+
 const view = ref<AppView>('home')
 const showSessionManager = ref(false)
 const showJumpTo = ref(false)
 
-// Surface location selected on the main map
 const selectedLocation = ref<Location | null>(null)
-// Aerial or underground layer location selected on the main map
-const selectedLayerLocation = ref<LayerLocation | null>(null)
-
-// Interior sub-map state
-const activeSubMap = ref<{ parentLocationId: LocationId } | null>(null)
-const selectedSubMapLocation = ref<LayerLocation | null>(null)
-const subMapDisplayCenter = ref<LocationId | undefined>(undefined)
 
 const reviewedSession = ref<GameSession | null>(null)
 const reviewedSessionDisplayCenters = ref<Record<LayerType, LocationId | null>>({
-  surface: null, aerial: null, underground: null,
+  surface: null, aerial: null, underground: null, interior: null, city: null,
 })
 
 const restoreError = ref('')
@@ -45,8 +44,14 @@ const restoreFileInput = ref<HTMLInputElement | null>(null)
 
 function clearSelection() {
   selectedLocation.value = null
-  selectedLayerLocation.value = null
   uiStore.selectedLocationId = null
+}
+
+function firstLocationIdForLayer(layer: LayerType): LocationId | null {
+  for (const loc of Object.values(atlasStore.locations)) {
+    if (loc.layer === layer) return loc.id
+  }
+  return null
 }
 
 function switchLayer(layer: LayerType) {
@@ -54,10 +59,7 @@ function switchLayer(layer: LayerType) {
   clearSelection()
   // Initialize atlas browse center for the new layer if not set
   if (view.value === 'atlas' && !uiStore.atlasBrowseCenters[layer]) {
-    const locs = layer === 'aerial' ? atlasStore.aerialLocations
-               : layer === 'underground' ? atlasStore.undergroundLocations
-               : atlasStore.locations
-    uiStore.atlasBrowseCenters[layer] = Object.keys(locs)[0] ?? null
+    uiStore.atlasBrowseCenters[layer] = firstLocationIdForLayer(layer)
   }
 }
 
@@ -90,20 +92,10 @@ function continueSession() {
 // --- Location selection ---
 
 function onSelectLocation(id: LocationId) {
-  const layer = uiStore.activeLayer
+  const loc = atlasStore.locations[id]
+  if (!loc) return
+  selectedLocation.value = loc
   uiStore.selectedLocationId = id
-  if (layer === 'surface') {
-    const loc = atlasStore.locations[id]
-    if (!loc) return
-    selectedLocation.value = loc
-    selectedLayerLocation.value = null
-  } else {
-    const locs = layer === 'aerial' ? atlasStore.aerialLocations : atlasStore.undergroundLocations
-    const loc = locs[id]
-    if (!loc) return
-    selectedLayerLocation.value = loc
-    selectedLocation.value = null
-  }
 }
 
 // --- Session navigation ---
@@ -111,18 +103,13 @@ function onSelectLocation(id: LocationId) {
 function onGo(id: LocationId) {
   const session = atlasStore.activeSession
   if (!session) return
-  const layer = uiStore.activeLayer
-  if (layer === 'surface') {
-    if (!(id in atlasStore.locations)) atlasStore.addLocation(id)
-    selectedLocation.value = atlasStore.locations[id]
-    selectedLayerLocation.value = null
-  } else {
-    const layerKey = layer as 'aerial' | 'underground'
-    const locs = layer === 'aerial' ? atlasStore.aerialLocations : atlasStore.undergroundLocations
-    if (!(id in locs)) atlasStore.addLayerLocation(layerKey, id)
-    selectedLayerLocation.value = locs[id]
-    selectedLocation.value = null
+  if (!(id in atlasStore.locations)) atlasStore.addLocation(id, uiStore.activeLayer)
+  const loc = atlasStore.locations[id]
+  if (loc.layer !== uiStore.activeLayer) {
+    uiStore.activeLayer = loc.layer
+    session.displayCenters[loc.layer] = id
   }
+  selectedLocation.value = loc
   session.currentLocationId = id
   if (!session.visitedLocations.includes(id)) session.visitedLocations.push(id)
   uiStore.selectedLocationId = id
@@ -131,20 +118,11 @@ function onGo(id: LocationId) {
 function onJump(id: LocationId) {
   const session = atlasStore.activeSession
   if (!session) return
-  const layer = uiStore.activeLayer
-  if (layer === 'surface') {
-    if (!(id in atlasStore.locations)) atlasStore.addLocation(id)
-    session.displayCenters.surface = id
-    selectedLocation.value = atlasStore.locations[id]
-    selectedLayerLocation.value = null
-  } else {
-    const layerKey = layer as 'aerial' | 'underground'
-    const locs = layer === 'aerial' ? atlasStore.aerialLocations : atlasStore.undergroundLocations
-    if (!(id in locs)) atlasStore.addLayerLocation(layerKey, id)
-    session.displayCenters[layer] = id
-    selectedLayerLocation.value = locs[id]
-    selectedLocation.value = null
-  }
+  if (!(id in atlasStore.locations)) atlasStore.addLocation(id, uiStore.activeLayer)
+  const loc = atlasStore.locations[id]
+  if (loc.layer !== uiStore.activeLayer) uiStore.activeLayer = loc.layer
+  session.displayCenters[loc.layer] = id
+  selectedLocation.value = loc
   session.currentLocationId = id
   if (!session.visitedLocations.includes(id)) session.visitedLocations.push(id)
   uiStore.selectedLocationId = id
@@ -161,84 +139,31 @@ function onCenterMap(id: LocationId) {
   uiStore.selectedLocationId = id
 }
 
-// --- Layer navigation from surface location detail ---
+// --- Following a connection to another layer (dig, climb, enter, …) ---
 
-function onGoToLayer(layer: 'aerial' | 'underground') {
+function onFollowConnection(layer: LayerType) {
   if (!selectedLocation.value) return
-  const entryId = layer === 'aerial'
-    ? selectedLocation.value.aerialEntryId
-    : selectedLocation.value.undergroundEntryId
-  if (!entryId) return
+  const exit = selectedLocation.value.connections[layer]
+  const targetId = exit && exit.kind !== 'blocked' ? exit.id : null
+  if (!targetId) return
 
   uiStore.activeLayer = layer
   clearSelection()
 
-  const session = atlasStore.activeSession
-  if (session) {
-    session.currentLocationId = entryId
-    session.displayCenters[layer] = entryId
-    if (!session.visitedLocations.includes(entryId)) session.visitedLocations.push(entryId)
-    const locs = layer === 'aerial' ? atlasStore.aerialLocations : atlasStore.undergroundLocations
-    if (locs[entryId]) {
-      selectedLayerLocation.value = locs[entryId]
-      uiStore.selectedLocationId = entryId
+  if (view.value === 'session') {
+    const session = atlasStore.activeSession
+    if (!session) return
+    session.currentLocationId = targetId
+    session.displayCenters[layer] = targetId
+    if (!session.visitedLocations.includes(targetId)) session.visitedLocations.push(targetId)
+    const loc = atlasStore.locations[targetId]
+    if (loc) {
+      selectedLocation.value = loc
+      uiStore.selectedLocationId = targetId
     }
   } else {
-    // Atlas mode: center on entry location
-    uiStore.atlasBrowseCenters[layer] = entryId
+    uiStore.atlasBrowseCenters[layer] = targetId
   }
-}
-
-// --- Interior sub-map ---
-
-function onOpenSubMap() {
-  if (!selectedLocation.value) return
-  const parentLocationId = selectedLocation.value.id
-  const entryId = selectedLocation.value.interiorEntryId
-  if (!entryId) return
-  subMapDisplayCenter.value = entryId
-  selectedSubMapLocation.value = null
-  uiStore.selectedLocationId = null
-  activeSubMap.value = { parentLocationId }
-  const session = atlasStore.activeSession
-  if (session) {
-    session.currentLocationId = entryId
-    if (!session.visitedLocations.includes(entryId)) session.visitedLocations.push(entryId)
-  }
-}
-
-function onSelectSubMapLocation(id: LocationId) {
-  if (!activeSubMap.value) return
-  const subMapId = `${activeSubMap.value.parentLocationId}-interior`
-  const subMap = atlasStore.subMaps[subMapId]
-  if (!subMap) return
-  selectedSubMapLocation.value = subMap.locations[id] ?? null
-  uiStore.selectedLocationId = id
-}
-
-function onSubMapGo(id: LocationId) {
-  if (!activeSubMap.value) return
-  const subMapId = `${activeSubMap.value.parentLocationId}-interior`
-  const subMap = atlasStore.subMaps[subMapId]
-  if (!subMap || !(id in subMap.locations)) return
-  const session = atlasStore.activeSession
-  if (session) {
-    session.currentLocationId = id
-    if (!session.visitedLocations.includes(id)) session.visitedLocations.push(id)
-  }
-  selectedSubMapLocation.value = subMap.locations[id]
-  uiStore.selectedLocationId = id
-}
-
-function onSubMapCenterMap(id: LocationId) {
-  subMapDisplayCenter.value = id
-  uiStore.selectedLocationId = id
-}
-
-function closeSubMap() {
-  activeSubMap.value = null
-  selectedSubMapLocation.value = null
-  uiStore.selectedLocationId = null
 }
 
 // --- Atlas browse ---
@@ -246,14 +171,10 @@ function closeSubMap() {
 function enterAtlasView() {
   const sessions = atlasStore.sessions
   const lastSession = sessions[sessions.length - 1]
-  if (lastSession) {
-    uiStore.atlasBrowseCenters.surface = lastSession.displayCenters.surface
-    uiStore.atlasBrowseCenters.aerial = lastSession.displayCenters.aerial
-    uiStore.atlasBrowseCenters.underground = lastSession.displayCenters.underground
-  } else {
-    uiStore.atlasBrowseCenters.surface = Object.keys(atlasStore.locations)[0] ?? null
-    uiStore.atlasBrowseCenters.aerial = Object.keys(atlasStore.aerialLocations)[0] ?? null
-    uiStore.atlasBrowseCenters.underground = Object.keys(atlasStore.undergroundLocations)[0] ?? null
+  for (const layer of ALL_LAYERS) {
+    uiStore.atlasBrowseCenters[layer] = lastSession
+      ? lastSession.displayCenters[layer]
+      : firstLocationIdForLayer(layer)
   }
   uiStore.activeLayer = 'surface'
   view.value = 'atlas'
@@ -263,17 +184,6 @@ function enterAtlasView() {
 function onAtlasCenterMap(id: LocationId) {
   uiStore.atlasBrowseCenters[uiStore.activeLayer] = id
   uiStore.selectedLocationId = id
-}
-
-function onAtlasGoToLayer(layer: 'aerial' | 'underground') {
-  if (!selectedLocation.value) return
-  const entryId = layer === 'aerial'
-    ? selectedLocation.value.aerialEntryId
-    : selectedLocation.value.undergroundEntryId
-  if (!entryId) return
-  uiStore.activeLayer = layer
-  uiStore.atlasBrowseCenters[layer] = entryId
-  clearSelection()
 }
 
 // --- Previous sessions ---
@@ -301,9 +211,6 @@ function downloadBackup() {
   const atlas = {
     version: CURRENT_VERSION,
     locations: atlasStore.locations,
-    aerialLocations: atlasStore.aerialLocations,
-    undergroundLocations: atlasStore.undergroundLocations,
-    subMaps: atlasStore.subMaps,
     sessions: atlasStore.sessions,
     activeSessionId: atlasStore.activeSessionId,
   }
@@ -327,7 +234,7 @@ function onRestoreFileSelected(e: Event) {
       return
     }
     if (!confirm('Replace all local atlas data with this backup? This cannot be undone.')) return
-    atlasStore.restoreFromBackup(parsed)
+    atlasStore.restoreFromBackup(parsed.atlas)
     view.value = 'home'
     clearSelection()
     restoreError.value = ''
@@ -335,17 +242,15 @@ function onRestoreFileSelected(e: Event) {
   reader.readAsText(file)
   ;(e.target as HTMLInputElement).value = ''
 }
-
-// --- Layer tab labels ---
-
-const LAYER_LABELS: Record<LayerType, string> = {
-  surface: 'Surface',
-  aerial: 'Aerial',
-  underground: 'Underground',
-}
 </script>
 
 <template>
+  <!-- One-time notice that a pre-v6 atlas couldn't be carried forward -->
+  <div v-if="atlasStore.resetWarning" :class="$style.resetBanner">
+    <span>Atlas data model changed — your saved atlas was reset.</span>
+    <button :class="$style.resetBannerDismiss" @click="atlasStore.dismissResetWarning()">Dismiss</button>
+  </div>
+
   <!-- Home screen -->
   <main v-if="view === 'home'" :class="$style.home">
     <div :class="$style.homeLogo">
@@ -394,47 +299,6 @@ const LAYER_LABELS: Record<LayerType, string> = {
     />
   </main>
 
-  <!-- Interior sub-map view -->
-  <div v-else-if="activeSubMap" :class="$style.appLayout">
-    <header :class="$style.appHeader">
-      <div :class="$style.subMapBreadcrumb">
-        <button :class="$style.headerBtn" @click="closeSubMap">← Back</button>
-        <span :class="$style.subMapTypeLabel">Interior</span>
-        <span :class="$style.subMapSeparator">/</span>
-        <span :class="$style.subMapParentId">{{ activeSubMap.parentLocationId }}</span>
-      </div>
-      <div :class="$style.headerActions">
-        <button
-          :class="[$style.headerBtn, $style.zoomBtn]"
-          @click="uiStore.zoomLevel = uiStore.zoomLevel === 'full' ? 'near' : 'full'"
-        >{{ uiStore.zoomLevel === 'full' ? 'Full' : 'Near' }}</button>
-      </div>
-    </header>
-
-    <div :class="$style.appBody">
-      <div :class="$style.mapArea">
-        <MapGrid
-          :display-center="subMapDisplayCenter"
-          :sub-map-locations="atlasStore.subMaps[`${activeSubMap.parentLocationId}-interior`]?.locations"
-          @select-location="onSelectSubMapLocation"
-        />
-      </div>
-      <transition name="panel">
-        <aside v-if="selectedSubMapLocation" :class="$style.detailPanel">
-          <SubMapLocationDetail
-            :location="selectedSubMapLocation"
-            :sub-map-id="`${activeSubMap.parentLocationId}-interior`"
-            :action-taken="!!atlasStore.activeSession?.actionTaken[selectedSubMapLocation.id]"
-            :is-current-location="atlasStore.activeSession?.currentLocationId === selectedSubMapLocation.id"
-            @close="selectedSubMapLocation = null; uiStore.selectedLocationId = null"
-            @go="onSubMapGo"
-            @center-map="onSubMapCenterMap"
-          />
-        </aside>
-      </transition>
-    </div>
-  </div>
-
   <!-- Session view -->
   <div v-else-if="view === 'session'" :class="$style.appLayout">
     <header :class="$style.appHeader">
@@ -467,21 +331,7 @@ const LAYER_LABELS: Record<LayerType, string> = {
             @go="onGo"
             @center-map="onCenterMap"
             @jump="onJump"
-            @open-sub-map="onOpenSubMap"
-            @go-to-layer="onGoToLayer"
-          />
-        </aside>
-        <aside v-else-if="selectedLayerLocation" :class="$style.detailPanel">
-          <LayerLocationDetail
-            :location="selectedLayerLocation"
-            :layer="uiStore.activeLayer as 'aerial' | 'underground'"
-            :in-session="true"
-            :is-current-location="atlasStore.activeSession?.currentLocationId === selectedLayerLocation.id"
-            :action-taken="!!atlasStore.activeSession?.actionTaken[selectedLayerLocation.id]"
-            @close="selectedLayerLocation = null; uiStore.selectedLocationId = null"
-            @go="onGo"
-            @center-map="onCenterMap"
-            @jump="onJump"
+            @follow-connection="onFollowConnection"
           />
         </aside>
       </transition>
@@ -490,7 +340,7 @@ const LAYER_LABELS: Record<LayerType, string> = {
     <!-- Layer tab bar -->
     <nav :class="$style.tabBar">
       <button
-        v-for="layer in (['surface', 'aerial', 'underground'] as LayerType[])"
+        v-for="layer in ALL_LAYERS"
         :key="layer"
         :class="[$style.tab, uiStore.activeLayer === layer && $style.tabActive]"
         @click="switchLayer(layer)"
@@ -528,17 +378,7 @@ const LAYER_LABELS: Record<LayerType, string> = {
             :in-session="false"
             @close="selectedLocation = null; uiStore.selectedLocationId = null"
             @center-map="onAtlasCenterMap"
-            @open-sub-map="onOpenSubMap"
-            @go-to-layer="onAtlasGoToLayer"
-          />
-        </aside>
-        <aside v-else-if="selectedLayerLocation" :class="$style.detailPanel">
-          <LayerLocationDetail
-            :location="selectedLayerLocation"
-            :layer="uiStore.activeLayer as 'aerial' | 'underground'"
-            :in-session="false"
-            @close="selectedLayerLocation = null; uiStore.selectedLocationId = null"
-            @center-map="onAtlasCenterMap"
+            @follow-connection="onFollowConnection"
           />
         </aside>
       </transition>
@@ -547,7 +387,7 @@ const LAYER_LABELS: Record<LayerType, string> = {
     <!-- Layer tab bar -->
     <nav :class="$style.tabBar">
       <button
-        v-for="layer in (['surface', 'aerial', 'underground'] as LayerType[])"
+        v-for="layer in ALL_LAYERS"
         :key="layer"
         :class="[$style.tab, uiStore.activeLayer === layer && $style.tabActive]"
         @click="switchLayer(layer)"
@@ -589,22 +429,13 @@ const LAYER_LABELS: Record<LayerType, string> = {
             @center-map="onReviewCenterMap"
           />
         </aside>
-        <aside v-else-if="selectedLayerLocation" :class="$style.detailPanel">
-          <LayerLocationDetail
-            :location="selectedLayerLocation"
-            :layer="uiStore.activeLayer as 'aerial' | 'underground'"
-            :in-session="false"
-            @close="selectedLayerLocation = null; uiStore.selectedLocationId = null"
-            @center-map="onReviewCenterMap"
-          />
-        </aside>
       </transition>
     </div>
 
     <!-- Layer tab bar -->
     <nav :class="$style.tabBar">
       <button
-        v-for="layer in (['surface', 'aerial', 'underground'] as LayerType[])"
+        v-for="layer in ALL_LAYERS"
         :key="layer"
         :class="[$style.tab, uiStore.activeLayer === layer && $style.tabActive]"
         @click="switchLayer(layer)"
@@ -663,6 +494,33 @@ const LAYER_LABELS: Record<LayerType, string> = {
 </style>
 
 <style module>
+/* --- Reset banner --- */
+.resetBanner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 16px;
+  background: var(--color-departure);
+  color: var(--color-bg);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.resetBannerDismiss {
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  color: inherit;
+  font-size: 12px;
+  padding: 2px 10px;
+}
+
 /* --- Home screen --- */
 .home {
   min-height: 100vh;
@@ -785,33 +643,6 @@ const LAYER_LABELS: Record<LayerType, string> = {
   font-weight: 600;
   color: var(--color-text);
   letter-spacing: 0.02em;
-}
-
-.subMapBreadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.subMapTypeLabel {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-}
-
-.subMapSeparator {
-  color: var(--color-text-dim);
-  font-size: 14px;
-}
-
-.subMapParentId {
-  font-family: var(--font-id);
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--color-text);
 }
 
 .headerActions {

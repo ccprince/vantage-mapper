@@ -11,6 +11,8 @@ export const useUiStore = defineStore('ui', {
       surface: null,
       aerial: null,
       underground: null,
+      interior: null,
+      city: null,
     } as Record<LayerType, LocationId | null>,
   }),
 

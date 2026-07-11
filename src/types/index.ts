@@ -2,7 +2,7 @@ export type LocationId = string
 
 export type Direction = 'north' | 'south' | 'east' | 'west'
 
-export type LayerType = 'surface' | 'aerial' | 'underground'
+export type LayerType = 'surface' | 'aerial' | 'underground' | 'interior' | 'city'
 
 export type Exit =
   | { kind: 'location'; id: LocationId }
@@ -10,32 +10,14 @@ export type Exit =
   | { kind: 'blocked' }
   | null
 
-// Interior sub-maps only; aerial and underground are full independent layers
-export type SubMapType = 'interior'
-
 export interface Location {
   id: LocationId
+  layer: LayerType
   exits: Record<Direction, Exit>
-  interiorEntryId: LocationId | null
-  aerialEntryId: LocationId | null
-  undergroundEntryId: LocationId | null
+  // Action-based (non-compass) links to other layers, e.g. a dig or an entrance.
+  // Keyed by destination layer; never contains this location's own layer.
+  connections: Partial<Record<LayerType, Exit>>
   notes: string
-}
-
-// Used for aerial/underground layer locations and interior sub-map locations
-export interface LayerLocation {
-  id: LocationId
-  exits: Record<Direction, Exit>
-  notes: string
-}
-
-export type SubMapLocation = LayerLocation
-
-export interface SubMap {
-  id: string
-  type: SubMapType
-  parentId: LocationId
-  locations: Record<LocationId, SubMapLocation>
 }
 
 export interface GameSession {
@@ -53,9 +35,6 @@ export interface GameSession {
 export interface PersistentAtlas {
   version: number
   locations: Record<LocationId, Location>
-  aerialLocations: Record<LocationId, LayerLocation>
-  undergroundLocations: Record<LocationId, LayerLocation>
-  subMaps: Record<string, SubMap>
   sessions: GameSession[]
   activeSessionId: string | null
 }

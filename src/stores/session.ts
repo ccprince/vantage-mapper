@@ -14,7 +14,7 @@ export const useSessionStore = defineStore('session', {
       const atlasStore = useAtlasStore()
 
       const isNew = !(startingLocationId in atlasStore.locations)
-      if (isNew) atlasStore.addLocation(startingLocationId)
+      if (isNew) atlasStore.addLocation(startingLocationId, 'surface')
 
       const now = new Date().toISOString()
       const session = {
@@ -27,11 +27,15 @@ export const useSessionStore = defineStore('session', {
           surface: startingLocationId,
           aerial: null,
           underground: null,
+          interior: null,
+          city: null,
         } as Record<LayerType, LocationId | null>,
         floatingRoots: {
           surface: isNew ? [startingLocationId] : [],
           aerial: [],
           underground: [],
+          interior: [],
+          city: [],
         } as Record<LayerType, LocationId[]>,
         visitedLocations: [startingLocationId],
         actionTaken: {} as Record<LocationId, boolean>,

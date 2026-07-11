@@ -1,16 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount } from 'vue'
-import type { Direction, Exit, LayerLocation, Location, LocationId } from '../types'
+import type { Direction, Exit, LayerType, Location, LocationId } from '../types'
 import { useAtlasStore } from '../stores/atlas'
 import { useUiStore } from '../stores/ui'
 import { computeLayout } from '../utils/layout'
 
-type AnyLocation = Location | LayerLocation
-
 const props = defineProps<{
   displayCenter?: LocationId
   readOnly?: boolean
-  subMapLocations?: Record<LocationId, LayerLocation>
   sessionVisited?: LocationId[]
   sessionCurrentLocationId?: LocationId
   sessionActionTaken?: Record<LocationId, boolean>
@@ -23,6 +20,11 @@ const emit = defineEmits<{
 
 const atlasStore = useAtlasStore()
 const uiStore = useUiStore()
+
+const LAYER_INITIAL: Record<LayerType, string> = {
+  surface: 'S', aerial: 'A', underground: 'U', interior: 'I', city: 'C',
+}
+const ALL_LAYERS: LayerType[] = ['surface', 'aerial', 'underground', 'interior', 'city']
 
 // ── Constants ──────────────────────────────────────────────────
 const TILE = 48        // px between cell origins (includes gutter)
@@ -58,27 +60,24 @@ const bgCells = computed(() => {
 })
 
 // ── Data sources ───────────────────────────────────────────────
-const locationMap = computed<Record<LocationId, AnyLocation>>(() => {
-  if (props.subMapLocations) return props.subMapLocations
-  if (uiStore.activeLayer === 'aerial') return atlasStore.aerialLocations
-  if (uiStore.activeLayer === 'underground') return atlasStore.undergroundLocations
-  return atlasStore.locations
-})
-
 const center = computed<LocationId | null>(() =>
   props.displayCenter ?? uiStore.displayCenter ?? null
 )
 
 const layout = computed(() => {
-  if (!center.value || Object.keys(locationMap.value).length === 0) {
-    return new Map<LocationId, { dx: number; dy: number }>()
+  if (!center.value || Object.keys(atlasStore.locations).length === 0) {
+    return { placed: new Map<LocationId, { dx: number; dy: number }>(), crossLayerExits: [] }
   }
-  return computeLayout(center.value, locationMap.value)
+  return computeLayout(center.value, atlasStore.locations, uiStore.activeLayer)
 })
 
 const placedLocations = computed(() =>
-  [...layout.value.entries()].map(([id, offset]) => ({ id, ...offset }))
+  [...layout.value.placed.entries()].map(([id, offset]) => ({ id, ...offset }))
 )
+
+function locationAt(id: LocationId): Location | undefined {
+  return atlasStore.locations[id]
+}
 
 // ── Session data ───────────────────────────────────────────────
 const selectedId = computed(() => uiStore.selectedLocationId)
@@ -135,8 +134,22 @@ function cellActionFill(id: LocationId): string {
   return 'var(--color-action-taken)'
 }
 
-function isMainMapLocation(loc: AnyLocation): loc is Location {
-  return 'hasInterior' in loc
+// ── Connection badges (lower-left) ──────────────────────────────
+// One small letter per other layer this location has a recorded connection to.
+type Badge = { layer: LayerType; resolved: boolean }
+
+function connectionBadges(id: LocationId): Badge[] {
+  const loc = locationAt(id)
+  if (!loc) return []
+  const badges: Badge[] = []
+  for (const layer of ALL_LAYERS) {
+    if (layer === loc.layer) continue
+    const exit = loc.connections[layer]
+    if (!exit) continue
+    const resolved = exit.kind === 'location' || (exit.kind === 'departure' && !!exit.id)
+    badges.push({ layer, resolved })
+  }
+  return badges
 }
 
 // ── Exit lines ─────────────────────────────────────────────────
@@ -149,19 +162,19 @@ const exitLines = computed<ExitLine[]>(() => {
   const drawn = new Set<string>()
 
   for (const { id, dx, dy } of placedLocations.value) {
-    const loc = locationMap.value[id]
+    const loc = locationAt(id)
     if (!loc) continue
 
     for (const [, exit] of Object.entries(loc.exits) as [Direction, Exit][]) {
       if (!exit || exit.kind !== 'location') continue
       const tgt = exit.id
-      if (!layout.value.has(tgt)) continue
+      if (!layout.value.placed.has(tgt)) continue
 
       const key = [id, tgt].sort().join(':')
       if (drawn.has(key)) continue
       drawn.add(key)
 
-      const { dx: tdx, dy: tdy } = layout.value.get(tgt)!
+      const { dx: tdx, dy: tdy } = layout.value.placed.get(tgt)!
       lines.push({ x1: cellCx(dx), y1: cellCy(dy), x2: cellCx(tdx), y2: cellCy(tdy) })
     }
   }
@@ -173,7 +186,7 @@ const exitLines = computed<ExitLine[]>(() => {
 // Resolved departures also draw a dashed line to the target.
 type DepMarker = { x: number; y: number; lineX2?: number; lineY2?: number }
 
-function departurePoint(dx: number, dy: number, dir: Direction): { x: number; y: number } {
+function edgePoint(dx: number, dy: number, dir: Direction): { x: number; y: number } {
   const dist = CELL / 2 + HALF_G / 2   // midpoint of source cell's half-gutter
   if (dir === 'north') return { x: cellCx(dx), y: cellCy(dy) - dist }
   if (dir === 'south') return { x: cellCx(dx), y: cellCy(dy) + dist }
@@ -185,17 +198,17 @@ const departureMarkers = computed<DepMarker[]>(() => {
   const markers: DepMarker[] = []
 
   for (const { id, dx, dy } of placedLocations.value) {
-    const loc = locationMap.value[id]
+    const loc = locationAt(id)
     if (!loc) continue
 
     for (const [dir, exit] of Object.entries(loc.exits) as [Direction, Exit][]) {
       if (!exit || exit.kind !== 'departure') continue
 
-      const pt = departurePoint(dx, dy, dir)
+      const pt = edgePoint(dx, dy, dir)
       const marker: DepMarker = { ...pt }
 
       if (exit.id) {
-        const tgtOffset = layout.value.get(exit.id)
+        const tgtOffset = layout.value.placed.get(exit.id)
         if (tgtOffset) {
           marker.lineX2 = cellCx(tgtOffset.dx)
           marker.lineY2 = cellCy(tgtOffset.dy)
@@ -216,16 +229,30 @@ const blockedMarkers = computed<BlkMarker[]>(() => {
   const markers: BlkMarker[] = []
 
   for (const { id, dx, dy } of placedLocations.value) {
-    const loc = locationMap.value[id]
+    const loc = locationAt(id)
     if (!loc) continue
 
     for (const [dir, exit] of Object.entries(loc.exits) as [Direction, Exit][]) {
       if (!exit || exit.kind !== 'blocked') continue
-      markers.push(departurePoint(dx, dy, dir))
+      markers.push(edgePoint(dx, dy, dir))
     }
   }
   return markers
 })
+
+// ── Cross-layer exit markers ─────────────────────────────────────
+// A regular exit whose destination lives on a different layer: traversal
+// stops here, but the gutter still shows a marker naming the layer beyond.
+type CrossLayerMarker = { x: number; y: number; label: string }
+
+const crossLayerMarkers = computed<CrossLayerMarker[]>(() =>
+  layout.value.crossLayerExits.map(({ id, dir, targetLayer }) => {
+    const offset = layout.value.placed.get(id)
+    if (!offset) return null
+    const pt = edgePoint(offset.dx, offset.dy, dir)
+    return { ...pt, label: LAYER_INITIAL[targetLayer] }
+  }).filter((m): m is CrossLayerMarker => m !== null)
+)
 
 // ── Interaction ────────────────────────────────────────────────
 let longPressTimer: ReturnType<typeof setTimeout> | null = null
@@ -333,15 +360,16 @@ onBeforeUnmount(clearLongPress)
           text-anchor="middle"
           dominant-baseline="middle"
         >{{ id }}</text>
-        <!-- Interior sub-map indicator (lower-left) -->
+        <!-- Connection badges (lower-left): one letter per other-layer link -->
         <text
-          v-if="isMainMapLocation(locationMap[id]) && (locationMap[id] as Location).interiorEntryId !== null"
-          :x="cellLeft(dx) + 3"
+          v-for="(badge, bi) in connectionBadges(id)"
+          :key="`badge-${bi}`"
+          :x="cellLeft(dx) + 3 + bi * 7"
           :y="cellTop(dy) + CELL - 2"
           :class="$style.cellFlag"
-          :style="{ fill: cellFlagFill(id) }"
+          :style="{ fill: cellFlagFill(id), opacity: badge.resolved ? 1 : 0.5 }"
           dominant-baseline="auto"
-        >I</text>
+        >{{ LAYER_INITIAL[badge.layer] }}</text>
         <!-- Action taken (lower-right) -->
         <text
           v-if="!readOnly && actionTakenMap[id]"
@@ -371,6 +399,17 @@ onBeforeUnmount(clearLongPress)
         dominant-baseline="middle"
         text-anchor="middle"
       >×</text>
+
+      <!-- Cross-layer exit markers: exit leads to a location on another layer -->
+      <g v-for="(cl, i) in crossLayerMarkers" :key="`cl-${i}`">
+        <circle :cx="cl.x" :cy="cl.y" r="6" :class="$style.crossLayerMarker" />
+        <text
+          :x="cl.x" :y="cl.y"
+          :class="$style.crossLayerLabel"
+          dominant-baseline="middle"
+          text-anchor="middle"
+        >{{ cl.label }}</text>
+      </g>
     </svg>
   </div>
 </template>
@@ -420,6 +459,21 @@ onBeforeUnmount(clearLongPress)
   font-family: var(--font-id);
   font-size: 10px;
   font-weight: 700;
+}
+
+.crossLayerMarker {
+  fill: var(--color-map-surface);
+  stroke: var(--color-departure);
+  stroke-width: 1.5;
+}
+
+.crossLayerLabel {
+  fill: var(--color-departure);
+  font-family: var(--font-id);
+  font-size: 8px;
+  font-weight: 700;
+  pointer-events: none;
+  user-select: none;
 }
 
 .cellInteractive {
